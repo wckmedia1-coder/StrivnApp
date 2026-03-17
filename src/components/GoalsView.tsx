@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Check, Flame, X } from 'lucide-react';
 import { supabase, Goal, DailyGoalInstance } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { checkAndAwardAchievements } from '../lib/achievements';
 
 export function GoalsView() {
   const { user, profile, refreshProfile } = useAuth();
@@ -11,6 +12,7 @@ export function GoalsView() {
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [isRecurring, setIsRecurring] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [newAchievement, setNewAchievement] = useState<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -29,9 +31,7 @@ export function GoalsView() {
       .eq('is_active', true)
       .order('created_at', { ascending: true });
 
-    if (data) {
-      setGoals(data);
-    }
+    if (data) setGoals(data);
     setLoading(false);
   };
 
@@ -42,9 +42,7 @@ export function GoalsView() {
       .eq('user_id', user?.id)
       .eq('date', today);
 
-    if (data) {
-      setTodayInstances(data);
-    }
+    if (data) setTodayInstances(data);
   };
 
   const createGoal = async () => {
@@ -109,17 +107,30 @@ export function GoalsView() {
       ? profile.total_gems_earned + gemsPerGoal
       : profile.total_gems_earned - instance.gems_earned;
 
+    const newTotalCompleted = newCompleted
+      ? (profile.total_goals_completed ?? 0) + 1
+      : (profile.total_goals_completed ?? 0) - 1;
+
     await supabase
       .from('profiles')
       .update({
         gem_balance: newBalance,
         total_gems_earned: newTotalEarned,
+        total_goals_completed: newTotalCompleted,
         last_active_date: today,
       })
       .eq('id', user?.id);
 
     await loadTodayInstances();
     await refreshProfile();
+
+    if (newCompleted) {
+      const earned = await checkAndAwardAchievements(user!.id);
+      if (earned.length > 0) {
+        setNewAchievement(`🏆 Achievement unlocked: ${earned[0].title} ${earned[0].emoji}`);
+        setTimeout(() => setNewAchievement(null), 4000);
+      }
+    }
   };
 
   const completedCount = todayInstances.filter((i) => i.completed).length;
@@ -131,6 +142,13 @@ export function GoalsView() {
 
   return (
     <div className="max-w-2xl mx-auto">
+
+      {newAchievement && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-yellow-400 text-slate-900 font-semibold px-6 py-3 rounded-full shadow-lg animate-bounce">
+          {newAchievement}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -182,11 +200,7 @@ export function GoalsView() {
                 </button>
 
                 <div className="flex-1">
-                  <p
-                    className={`font-medium ${
-                      instance.completed ? 'text-slate-600 line-through' : 'text-slate-900'
-                    }`}
-                  >
+                  <p className={`font-medium ${instance.completed ? 'text-slate-600 line-through' : 'text-slate-900'}`}>
                     {goal.title}
                   </p>
                   {goal.is_recurring && (
@@ -269,7 +283,7 @@ export function GoalsView() {
         <h3 className="font-semibold text-slate-900 mb-2">How it works</h3>
         <ul className="text-sm text-slate-600 space-y-1">
           <li>• Complete goals to earn gems</li>
-          <li>• Each goal = {isHotStreak ? '2 gems (Hot Streak!)' : '1 gem'}</li>
+          <li>• Each goal = {isHotStreak ? '2 gems (Hot Streak! 🔥)' : '1 gem'}</li>
           <li>• Maintain a 5-day streak for bonus rewards</li>
           <li>• Use gems to build your city</li>
           <li>• Missing a day causes city decay</li>
