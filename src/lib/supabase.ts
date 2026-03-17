@@ -12,6 +12,7 @@ export type Profile = {
   last_active_date: string | null;
   gem_balance: number;
   total_gems_earned: number;
+  total_goals_completed: number;
   created_at: string;
 };
 
