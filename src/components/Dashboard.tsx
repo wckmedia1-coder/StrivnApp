@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Home, Building2, Users, User, LogOut, Gem } from 'lucide-react';
+import { Home, Building2, Users, User, LogOut, Gem, Trophy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoalsView } from './GoalsView';
 import { CityView } from './CityView';
 import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
+import { AchievementsView } from './AchievementsView';
 
-type View = 'goals' | 'city' | 'social' | 'profile';
+type View = 'goals' | 'city' | 'social' | 'profile' | 'achievements';
 
 export function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('goals');
@@ -16,6 +17,7 @@ export function Dashboard() {
     { id: 'goals' as View, icon: Home, label: 'Goals' },
     { id: 'city' as View, icon: Building2, label: 'City' },
     { id: 'social' as View, icon: Users, label: 'Social' },
+    { id: 'achievements' as View, icon: Trophy, label: 'Achievements' },
     { id: 'profile' as View, icon: User, label: 'Profile' },
   ];
 
@@ -33,7 +35,6 @@ export function Dashboard() {
                 </div>
               )}
             </div>
-
             <div className="flex items-center gap-4">
               {profile && (
                 <div className="text-right">
@@ -83,6 +84,7 @@ export function Dashboard() {
         {currentView === 'goals' && <GoalsView />}
         {currentView === 'city' && <CityView />}
         {currentView === 'social' && <SocialView />}
+        {currentView === 'achievements' && <AchievementsView />}
         {currentView === 'profile' && <ProfileView />}
       </main>
     </div>
