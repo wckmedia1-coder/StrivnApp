@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Home, Building2, Users, User, LogOut, Gem, Trophy } from 'lucide-react';
+import { Home, Building2, Users, User, LogOut, Gem, Trophy, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoalsView } from './GoalsView';
 import { CityView } from './CityView';
 import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
 import { AchievementsView } from './AchievementsView';
+import { ChallengesView } from './ChallengesView';
 
-type View = 'goals' | 'city' | 'social' | 'profile' | 'achievements';
+type View = 'goals' | 'city' | 'social' | 'profile' | 'achievements' | 'challenges';
 
 export function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('goals');
@@ -15,6 +16,7 @@ export function Dashboard() {
 
   const navItems = [
     { id: 'goals' as View, icon: Home, label: 'Goals' },
+    { id: 'challenges' as View, icon: Zap, label: 'Challenges' },
     { id: 'city' as View, icon: Building2, label: 'City' },
     { id: 'social' as View, icon: Users, label: 'Social' },
     { id: 'achievements' as View, icon: Trophy, label: 'Achievements' },
@@ -58,14 +60,14 @@ export function Dashboard() {
 
       <nav className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-1">
+          <div className="flex gap-1 overflow-x-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
                 <button
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
-                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 ${
+                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 whitespace-nowrap ${
                     currentView === item.id
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -82,6 +84,7 @@ export function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {currentView === 'goals' && <GoalsView />}
+        {currentView === 'challenges' && <ChallengesView />}
         {currentView === 'city' && <CityView />}
         {currentView === 'social' && <SocialView />}
         {currentView === 'achievements' && <AchievementsView />}
