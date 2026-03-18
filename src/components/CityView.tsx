@@ -199,7 +199,7 @@ export function CityView() {
       animRef.current=requestAnimationFrame(loop);
     }
     loop();
-  }, []);
+  }, [loading]);
 
   const loadCity = async () => {
     const { data: cityData } = await supabase.from('cities').select('*').eq('user_id', user?.id).maybeSingle();
