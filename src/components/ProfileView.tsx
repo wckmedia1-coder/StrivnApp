@@ -37,7 +37,7 @@ export function ProfileView() {
     }
   }, [profile]);
 
-  const loadHeatmap = async () => {
+ const loadHeatmap = async () => {
   const today = new Date();
   const days: DayData[] = [];
 
@@ -53,6 +53,39 @@ export function ProfileView() {
       total: 0,
     });
   }
+
+  const startDate = days[0].date;
+  const { data } = await supabase
+    .from('daily_goal_instances')
+    .select('date, completed')
+    .eq('user_id', user?.id)
+    .gte('date', startDate)
+    .order('date', { ascending: true });
+
+  if (data) {
+    data.forEach(row => {
+      const day = days.find(d => d.date === row.date);
+      if (day) {
+        day.total += 1;
+        if (row.completed) day.completed += 1;
+      }
+    });
+  }
+
+  setHeatmapData(days);
+
+  // Calculate best streak
+  let best = 0, current = 0;
+  days.forEach(day => {
+    if (day.total > 0 && day.completed === day.total) {
+      current++;
+      best = Math.max(best, current);
+    } else if (day.total > 0) {
+      current = 0;
+    }
+  });
+  setBestStreak(best);
+};
 
   const startDate = days[0].date;
   const { data } = await supabase
