@@ -25,7 +25,6 @@ export function Dashboard() {
 
   useEffect(() => {
     if (profile) {
-      // Show briefing once per day
       const lastSeen = localStorage.getItem(BRIEFING_KEY);
       const today = getLocalDateString();
       if (lastSeen !== today) {
@@ -39,19 +38,18 @@ export function Dashboard() {
     setShowBriefing(false);
   };
 
-  const navItems = [
-    { id: 'goals' as View, icon: Home, label: 'Goals' },
-    { id: 'challenges' as View, icon: Zap, label: 'Challenges' },
-    { id: 'city' as View, icon: Building2, label: 'City' },
-    { id: 'social' as View, icon: Users, label: 'Social' },
-    { id: 'achievements' as View, icon: Trophy, label: 'Achievements' },
-    { id: 'profile' as View, icon: User, label: 'Profile' },
+  const navItems: { id: View; icon: React.ElementType; label: string }[] = [
+    { id: 'goals', icon: Home, label: 'Goals' },
+    { id: 'challenges', icon: Zap, label: 'Challenges' },
+    { id: 'city', icon: Building2, label: 'City' },
+    { id: 'social', icon: Users, label: 'Social' },
+    { id: 'achievements', icon: Trophy, label: 'Achievements' },
+    { id: 'profile', icon: User, label: 'Profile' },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* Daily Briefing overlay */}
       {showBriefing && (
         <DailyBriefing onDismiss={handleDismissBriefing} />
       )}
@@ -92,11 +90,35 @@ export function Dashboard() {
           <div className="flex gap-1 overflow-x-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
+              const isActive = currentView === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
-                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 whitespace-nowrap ${
-                    currentView === item.id
+                  className={[
+                    'flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 whitespace-nowrap',
+                    isActive
                       ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent t
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+                  ].join(' ')}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {currentView === 'goals' && <GoalsView />}
+        {currentView === 'challenges' && <ChallengesView />}
+        {currentView === 'city' && <CityView />}
+        {currentView === 'social' && <SocialView />}
+        {currentView === 'achievements' && <AchievementsView />}
+        {currentView === 'profile' && <ProfileView />}
+      </main>
+    </div>
+  );
+}
