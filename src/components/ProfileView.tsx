@@ -41,54 +41,54 @@ export function ProfileView() {
     }
   }, [profile]);
 
-const loadHeatmap = async () => {
-  const today = new Date();
-  const days: DayData[] = [];
+  const loadHeatmap = async () => {
+    const today = new Date();
+    const days: DayData[] = [];
 
-  for (let i = 83; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    days.push({
-      date: getLocalDateString(d),
-      completed: 0,
-      total: 0,
-    });
-  }
+    for (let i = 179; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      days.push({
+        date: getLocalDateString(d),
+        completed: 0,
+        total: 0,
+      });
+    }
 
-  const startDate = days[0].date;
-  const { data } = await supabase
-    .from('daily_goal_instances')
-    .select('date, completed')
-    .eq('user_id', user?.id)
-    .gte('date', startDate)
-    .order('date', { ascending: true });
+    const startDate = days[0].date;
+    const { data } = await supabase
+      .from('daily_goal_instances')
+      .select('date, completed')
+      .eq('user_id', user?.id)
+      .gte('date', startDate)
+      .order('date', { ascending: true });
 
-  if (data) {
-    data.forEach(row => {
-      const day = days.find(d => d.date === row.date);
-      if (day) {
-        day.total += 1;
-        if (row.completed) day.completed += 1;
+    if (data) {
+      data.forEach(row => {
+        const day = days.find(d => d.date === row.date);
+        if (day) {
+          day.total += 1;
+          if (row.completed) day.completed += 1;
+        }
+      });
+    }
+
+    setHeatmapData(days);
+
+    let best = 0;
+    let current = 0;
+    days.forEach(day => {
+      if (day.total > 0 && day.completed === day.total) {
+        current++;
+        best = Math.max(best, current);
+      } else if (day.total > 0) {
+        current = 0;
       }
     });
-  }
+    setBestStreak(best);
+  };
 
-  setHeatmapData(days);
-
-  let best = 0;
-  let current = 0;
-  days.forEach(day => {
-    if (day.total > 0 && day.completed === day.total) {
-      current++;
-      best = Math.max(best, current);
-    } else if (day.total > 0) {
-      current = 0;
-    }
-  });
-  setBestStreak(best);
-};
-
-  const getHeatmapColor = (day: DayData) => {
+  const getHeatmapColor = (day: DayData): string => {
     if (day.total === 0) return '#e2e8f0';
     const ratio = day.completed / day.total;
     if (ratio === 0) return '#fecaca';
@@ -161,27 +161,40 @@ const loadHeatmap = async () => {
     await loadFriends();
   };
 
-  // Build heatmap grid aligned to start on Monday
-  const buildGrid = () => {
-    if (heatmapData.length === 0) return [];
-    const firstDay = new Date(heatmapData[0].date);
-    // 0=Sun,1=Mon...6=Sat → convert to Mon=0
-    const firstDow = (firstDay.getDay() + 6) % 7;
-    // Pad start with empty days so first column starts on Monday
-    const padded: (DayData | null)[] = [
-      ...Array(firstDow).fill(null),
-      ...heatmapData,
-    ];
-    // Split into weeks
-    const weeks: (DayData | null)[][] = [];
-    for (let i = 0; i < padded.length; i += 7) {
-      weeks.push(padded.slice(i, i + 7));
+  // Build 6 months of calendar data
+  const buildCalendarMonths = () => {
+    const today = new Date();
+    const months = [];
+
+    for (let m = 5; m >= 0; m--) {
+      const monthDate = new Date(today.getFullYear(), today.getMonth() - m, 1);
+      const year = monthDate.getFullYear();
+      const month = monthDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0
+
+      const dayCells: (DayData | null)[] = [
+        ...Array(firstDow).fill(null),
+        ...Array.from({ length: daysInMonth }, (_, i) => {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+          return heatmapData.find(d => d.date === dateStr) || { date: dateStr, completed: 0, total: 0 };
+        }),
+      ];
+
+      while (dayCells.length % 7 !== 0) dayCells.push(null);
+
+      months.push({
+        label: monthDate.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        dayCells,
+      });
     }
-    return weeks;
+
+    return months;
   };
 
-  const grid = buildGrid();
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const calendarMonths = buildCalendarMonths();
+  const dayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+  const todayStr = getLocalDateString(new Date());
 
   if (loading) return <div className="text-center py-8 text-slate-600">Loading...</div>;
 
@@ -228,121 +241,81 @@ const loadHeatmap = async () => {
         )}
       </div>
 
-     {/* Heatmap */}
-<div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-  <h2 className="text-xl font-bold text-slate-900 mb-1">Activity</h2>
-  <p className="text-slate-500 text-sm mb-6">Your goal completions this year</p>
+      {/* Calendar Heatmap */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-1">Activity</h2>
+        <p className="text-slate-500 text-sm mb-6">Your goal completions over the last 6 months</p>
 
-  {(() => {
-    // Build last 6 months of calendar data
-    const today = new Date();
-    const months = [];
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+          {calendarMonths.map((month, mi) => (
+            <div key={mi}>
+              {/* Month title */}
+              <h3 className="text-sm font-semibold text-slate-800 mb-2">{month.label}</h3>
 
-    for (let m = 5; m >= 0; m--) {
-      const monthDate = new Date(today.getFullYear(), today.getMonth() - m, 1);
-      const year = monthDate.getFullYear();
-      const month = monthDate.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0
-
-      const dayCells: (DayData | null)[] = [
-        ...Array(firstDow).fill(null),
-        ...Array.from({ length: daysInMonth }, (_, i) => {
-          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
-          return heatmapData.find(d => d.date === dateStr) || { date: dateStr, completed: 0, total: 0 };
-        }),
-      ];
-
-      // Pad to complete last week
-      while (dayCells.length % 7 !== 0) dayCells.push(null);
-
-      months.push({
-        label: monthDate.toLocaleString('default', { month: 'long', year: 'numeric' }),
-        dayCells,
-      });
-    }
-
-    const dayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {months.map((month, mi) => (
-          <div key={mi}>
-            {/* Month title */}
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">{month.label}</h3>
-
-            {/* Day labels */}
-            <div className="grid grid-cols-7 mb-1">
-              {dayLabels.map(d => (
-                <div key={d} className="text-center text-slate-400 font-medium" style={{ fontSize: '10px' }}>
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Day cells */}
-            <div className="grid grid-cols-7 gap-0.5">
-              {month.dayCells.map((day, di) => {
-                if (!day) return <div key={di} />;
-                const dateNum = parseInt(day.date.split('-')[2]);
-                const isToday = day.date === getLocalDateString(new Date());
-                const isFuture = day.date > getLocalDateString(new Date());
-
-                return (
-                  <div
-                    key={di}
-                    title={`${day.date}: ${day.completed}/${day.total} goals`}
-                    className={`relative flex items-center justify-center rounded-sm cursor-pointer transition-transform hover:scale-110 ${
-                      isToday ? 'ring-2 ring-slate-900 ring-offset-1' : ''
-                    }`}
-                    style={{
-                      backgroundColor: isFuture ? 'transparent' : getHeatmapColor(day),
-                      aspectRatio: '1',
-                    }}
-                  >
-                    <span style={{
-                      fontSize: '9px',
-                      color: day.total > 0 && !isFuture ? '#fff' : '#94a3b8',
-                      fontWeight: isToday ? 'bold' : 'normal',
-                    }}>
-                      {dateNum}
-                    </span>
+              {/* Day labels */}
+              <div className="grid grid-cols-7 mb-1 gap-0.5">
+                {dayLabels.map(d => (
+                  <div key={d} className="text-center text-slate-400 font-medium" style={{ fontSize: '10px' }}>
+                    {d}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  })()}
+                ))}
+              </div>
 
-  {/* Legend */}
-  <div className="flex items-center gap-2 mt-6 flex-wrap">
-    <span className="text-xs text-slate-500">No goals</span>
-    <div className="w-4 h-4 rounded-sm bg-slate-200" />
-    <div className="w-4 h-4 rounded-sm bg-red-200" />
-    <span className="text-xs text-slate-500">Missed</span>
-    <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#86efac' }} />
-    <span className="text-xs text-slate-500">Partial</span>
-    <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
-    <span className="text-xs text-slate-500">Most</span>
-    <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#15803d' }} />
-    <span className="text-xs text-slate-500">All goals ✅</span>
-  </div>
-</div>
+              {/* Day cells */}
+              <div className="grid grid-cols-7 gap-0.5">
+                {month.dayCells.map((day, di) => {
+                  if (!day) return <div key={di} className="aspect-square" />;
+
+                  const dateNum = parseInt(day.date.split('-')[2]);
+                  const isToday = day.date === todayStr;
+                  const isFuture = day.date > todayStr;
+                  const bgColor = isFuture ? '#f8fafc' : getHeatmapColor(day);
+                  const textColor = day.total > 0 && !isFuture
+                    ? (day.completed === day.total ? '#ffffff' : '#1e293b')
+                    : '#94a3b8';
+
+                  return (
+                    <div
+                      key={di}
+                      title={isFuture ? '' : `${day.date}: ${day.completed}/${day.total} goals completed`}
+                      className={`aspect-square flex items-center justify-center rounded-sm cursor-pointer transition-transform hover:scale-110 ${
+                        isToday ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+                      }`}
+                      style={{ backgroundColor: bgColor }}
+                    >
+                      <span style={{ fontSize: '9px', color: textColor, fontWeight: isToday ? 'bold' : 'normal' }}>
+                        {dateNum}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <span className="text-xs text-slate-500">Less</span>
-          {['#e2e8f0', '#86efac', '#22c55e', '#15803d'].map(c => (
-            <div key={c} className="w-3 h-3 rounded-sm" style={{ backgroundColor: c }} />
-          ))}
-          <span className="text-xs text-slate-500">More</span>
-          <div className="w-3 h-3 rounded-sm bg-red-200 ml-2" />
-          <span className="text-xs text-slate-500">Missed day</span>
-          <div className="w-3 h-3 rounded-sm bg-slate-200 ml-2" />
-          <span className="text-xs text-slate-500">No goals</span>
+        <div className="flex items-center gap-3 mt-6 flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded-sm bg-slate-200" />
+            <span className="text-xs text-slate-500">No goals</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded-sm bg-red-200" />
+            <span className="text-xs text-slate-500">Missed</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#86efac' }} />
+            <span className="text-xs text-slate-500">Partial</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
+            <span className="text-xs text-slate-500">Most</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: '#15803d' }} />
+            <span className="text-xs text-slate-500">All done ✅</span>
+          </div>
         </div>
       </div>
 
