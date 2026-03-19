@@ -41,9 +41,7 @@ export function Dashboard() {
               {profile && (
                 <div className="text-right">
                   <p className="text-sm font-medium text-slate-900">{profile.username}</p>
-                  <p className="text-xs text-slate-500">
-                    {profile.streak_count} day streak
-                  </p>
+                  <p className="text-xs text-slate-500">{profile.streak_count} day streak</p>
                 </div>
               )}
               <button
