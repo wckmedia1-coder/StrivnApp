@@ -115,12 +115,15 @@ export function GoalsView() {
   };
 
   const saveEdit = async (goalId: string) => {
-    if (!editingTitle.trim()) return;
-    await supabase.from('goals').update({ title: editingTitle.trim() }).eq('id', goalId);
-    setGoals(goals.map(g => g.id === goalId ? { ...g, title: editingTitle.trim() } : g));
-    setEditingGoalId(null);
-    setEditingTitle('');
-  };
+  if (!editingTitle.trim()) return;
+  await supabase
+    .from('goals')
+    .update({ title: editingTitle.trim() })
+    .eq('id', goalId);
+  setGoals(goals.map(g => g.id === goalId ? { ...g, title: editingTitle.trim() } : g));
+  setEditingGoalId(null);
+  setEditingTitle('');
+};
 
   // Simple goal — just tick it
   const completeSimpleGoal = async (instance: InstanceWithProgress) => {
