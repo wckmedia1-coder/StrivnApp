@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Home, Building2, Users, User, LogOut, Gem, Trophy, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoalsView } from './GoalsView';
@@ -7,12 +7,37 @@ import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
 import { AchievementsView } from './AchievementsView';
 import { ChallengesView } from './ChallengesView';
+import { DailyBriefing } from './DailyBriefing';
 
 type View = 'goals' | 'city' | 'social' | 'profile' | 'achievements' | 'challenges';
 
+const BRIEFING_KEY = 'strivn_last_briefing';
+
+function getLocalDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('goals');
+  const [showBriefing, setShowBriefing] = useState(false);
   const { profile, signOut } = useAuth();
+
+  useEffect(() => {
+    if (profile) {
+      // Show briefing once per day
+      const lastSeen = localStorage.getItem(BRIEFING_KEY);
+      const today = getLocalDateString();
+      if (lastSeen !== today) {
+        setShowBriefing(true);
+      }
+    }
+  }, [profile]);
+
+  const handleDismissBriefing = () => {
+    localStorage.setItem(BRIEFING_KEY, getLocalDateString());
+    setShowBriefing(false);
+  };
 
   const navItems = [
     { id: 'goals' as View, icon: Home, label: 'Goals' },
@@ -25,6 +50,12 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+
+      {/* Daily Briefing overlay */}
+      {showBriefing && (
+        <DailyBriefing onDismiss={handleDismissBriefing} />
+      )}
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -68,26 +99,4 @@ export function Dashboard() {
                   className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 whitespace-nowrap ${
                     currentView === item.id
                       ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {currentView === 'goals' && <GoalsView />}
-        {currentView === 'challenges' && <ChallengesView />}
-        {currentView === 'city' && <CityView />}
-        {currentView === 'social' && <SocialView />}
-        {currentView === 'achievements' && <AchievementsView />}
-        {currentView === 'profile' && <ProfileView />}
-      </main>
-    </div>
-  );
-}
+                      : 'border-transparent t
