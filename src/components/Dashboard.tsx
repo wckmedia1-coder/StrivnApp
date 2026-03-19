@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, Building2, Users, User, LogOut, Gem, Trophy, Zap } from 'lucide-react';
+import { Home, Building2, Users, User, LogOut, Gem, Trophy, Calendar } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoalsView } from './GoalsView';
 import { CityView } from './CityView';
@@ -40,7 +40,7 @@ export function Dashboard() {
 
   const navItems: { id: View; icon: React.ElementType; label: string }[] = [
     { id: 'goals', icon: Home, label: 'Goals' },
-    { id: 'challenges', icon: Zap, label: 'Challenges' },
+    { id: 'challenges', icon: Calendar, label: 'Challenges' },
     { id: 'city', icon: Building2, label: 'City' },
     { id: 'social', icon: Users, label: 'Social' },
     { id: 'achievements', icon: Trophy, label: 'Achievements' },
