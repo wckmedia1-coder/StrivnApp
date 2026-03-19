@@ -88,12 +88,13 @@ export function GoalsView() {
       setShowAddGoal(false);
 
       await supabase.from('daily_goal_instances').insert({
-        goal_id: data.id,
-        user_id: user?.id,
-        date: today,
-        completed: false,
-        progress_value: 0,
-      });
+  goal_id: data.id,
+  user_id: user?.id,
+  date: today,
+  completed: false,
+  gems_earned: 0,
+  progress_value: 0,
+});
 
       await loadTodayInstances();
     }
