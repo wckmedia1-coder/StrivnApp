@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Gem, AlertCircle, Wrench } from 'lucide-react';
+import { Gem, AlertCircle, Wrench, Clock } from 'lucide-react';
 import { supabase, City, Building } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { repairCity, getAvailableBuildings, getRemainingAllowed, getTotalSlotsForWorld, BuildingType } from '../lib/gameLogic';
+import { repairCity, getAvailableBuildings, getRemainingAllowed, getTotalSlotsForWorld } from '../lib/gameLogic';
 import { checkAndAwardAchievements } from '../lib/achievements';
+import { calculatePassiveIncome, collectPassiveIncome, getGemsPerHour } from '../lib/passiveIncome';
 
 export function CityView() {
   const { user, profile, refreshProfile } = useAuth();
@@ -12,6 +13,11 @@ export function CityView() {
   const [loading, setLoading] = useState(true);
   const [repairing, setRepairing] = useState(false);
   const [newAchievement, setNewAchievement] = useState<string | null>(null);
+  const [pendingGems, setPendingGems] = useState(0);
+  const [hoursAccumulated, setHoursAccumulated] = useState(0);
+  const [collecting, setCollecting] = useState(false);
+  const [collectMessage, setCollectMessage] = useState<string | null>(null);
+  const [gemsPerHour, setGemsPerHour] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const carsRef = useRef([
     { x: -120, speed: 2.2, color: '#e53935', color2: '#b71c1c', dir: 1 },
@@ -42,7 +48,20 @@ export function CityView() {
       type: b.building_type,
       x: SLOTS[i]?.x ?? 0,
     }));
+    // Update gems per hour whenever buildings change
+    setGemsPerHour(Math.round(getGemsPerHour(buildings) * 100) / 100);
   }, [buildings]);
+
+  // Refresh passive income every minute
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(async () => {
+      const result = await calculatePassiveIncome(user.id);
+      setPendingGems(Math.floor(result.gemsEarned * 10) / 10);
+      setHoursAccumulated(result.hoursAccumulated);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -184,8 +203,8 @@ export function CityView() {
       ctx.fillStyle='#607d8b';
       ctx.fillRect(x+5,base-40,8,20); ctx.fillRect(x+67,base-40,8,20);
       ctx.fillRect(x+25,base-32,8,12); ctx.fillRect(x+47,base-32,8,12);
-      ctx.fillStyle='#90a4ae';
-      ctx.beginPath(); ctx.moveTo(x+9,base-40); ctx.lineTo(x+29,base-32); ctx.strokeStyle='#90a4ae'; ctx.lineWidth=2; ctx.stroke();
+      ctx.strokeStyle='#90a4ae'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x+9,base-40); ctx.lineTo(x+29,base-32); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x+71,base-40); ctx.lineTo(x+51,base-32); ctx.stroke();
       ctx.fillStyle='#546e7a'; ctx.fillRect(x,base-12,80,12);
     }
@@ -211,8 +230,7 @@ export function CityView() {
       ctx.fillStyle='#212121'; ctx.fillRect(x+30,base-30,20,30);
       ctx.fillStyle='#ffd600'; ctx.fillRect(x+36,base-18,8,8);
     }
-
-    function drawBuilding(type:string, x:number) {
+    function drawBuilding(type:string,x:number) {
       if(type==='tree') drawTree(x);
       else if(type==='house') drawHouse(x);
       else if(type==='shop') drawShop(x);
@@ -225,7 +243,6 @@ export function CityView() {
       else if(type==='theatre') drawTheatre(x);
       else if(type==='bank') drawBank(x);
     }
-
     function drawCar(car:any) {
       const laneY=car.dir===1?LANE1_Y:LANE2_Y,cx=car.x,cw=58,ch=24;
       if(car.dir===1){
@@ -248,7 +265,6 @@ export function CityView() {
         ctx.fillStyle='#e53935'; ctx.fillRect(cx-4,laneY+6,4,8);
       }
     }
-
     function loop() {
       ctx.clearRect(0,0,W,H);
       drawSky(); drawBackgroundSkyline();
@@ -267,13 +283,36 @@ export function CityView() {
   }, [loading]);
 
   const loadCity = async () => {
-    const { data: cityData } = await supabase.from('cities').select('*').eq('user_id', user?.id).maybeSingle();
+    const { data: cityData } = await supabase
+      .from('cities').select('*').eq('user_id', user?.id).maybeSingle();
     if (cityData) {
       setCity(cityData);
-      const { data: buildingsData } = await supabase.from('buildings').select('*').eq('city_id', cityData.id).order('created_at', { ascending: true });
+      const { data: buildingsData } = await supabase
+        .from('buildings').select('*').eq('city_id', cityData.id).order('created_at', { ascending: true });
       if (buildingsData) setBuildings(buildingsData);
+
+      // Calculate passive income
+      if (user) {
+        const result = await calculatePassiveIncome(user.id);
+        setPendingGems(Math.floor(result.gemsEarned * 10) / 10);
+        setHoursAccumulated(result.hoursAccumulated);
+      }
     }
     setLoading(false);
+  };
+
+  const handleCollect = async () => {
+    if (!user || collecting || pendingGems <= 0) return;
+    setCollecting(true);
+    const result = await collectPassiveIncome(user.id);
+    if (result.collected > 0) {
+      setCollectMessage(`+${result.collected} gems collected! 💎`);
+      setPendingGems(0);
+      setHoursAccumulated(0);
+      await refreshProfile();
+      setTimeout(() => setCollectMessage(null), 3000);
+    }
+    setCollecting(false);
   };
 
   const handlePlace = async (typeId: string) => {
@@ -281,34 +320,30 @@ export function CityView() {
     const availableTypes = getAvailableBuildings(city.world_level);
     const buildingType = availableTypes.find(t => t.id === typeId);
     if (!buildingType) return;
-
     if (profile.gem_balance < buildingType.cost) {
-      alert(`Not enough gems! Need ${buildingType.cost} gems.`);
-      return;
+      alert(`Not enough gems! Need ${buildingType.cost} gems.`); return;
     }
-
     const totalSlots = getTotalSlotsForWorld(city.world_level);
     if (buildings.length >= totalSlots) {
-      alert('Your city is full for this world!');
-      return;
+      alert('Your city is full for this world!'); return;
     }
-
     const remaining = getRemainingAllowed(typeId, city.world_level, buildings);
     if (remaining <= 0) {
-      alert(`You've reached the max ${buildingType.name}s for this world!`);
-      return;
+      alert(`You've reached the max ${buildingType.name}s for this world!`); return;
     }
-
     const slot = SLOTS[buildings.length];
     const { data: newBuilding, error } = await supabase.from('buildings').insert({
       city_id: city.id, building_type: typeId,
       position_x: slot.x, position_y: 0,
       level: 1, is_damaged: false, repair_cost: 0,
     }).select().single();
-
     if (newBuilding && !error) {
-      await supabase.from('profiles').update({ gem_balance: profile.gem_balance - buildingType.cost }).eq('id', user?.id);
-      await supabase.from('cities').update({ total_gems_spent: city.total_gems_spent + buildingType.cost }).eq('id', city.id);
+      await supabase.from('profiles').update({
+        gem_balance: profile.gem_balance - buildingType.cost,
+      }).eq('id', user?.id);
+      await supabase.from('cities').update({
+        total_gems_spent: city.total_gems_spent + buildingType.cost,
+      }).eq('id', city.id);
       await refreshProfile();
       await loadCity();
       const earned = await checkAndAwardAchievements(user!.id);
@@ -335,12 +370,20 @@ export function CityView() {
   const totalRepairCost = damagedBuildings.reduce((sum, b) => sum + b.repair_cost, 0);
   const availableTypes = getAvailableBuildings(city.world_level);
   const totalSlots = getTotalSlotsForWorld(city.world_level);
+  const canCollect = pendingGems >= 0.5;
 
   return (
     <div className="max-w-4xl mx-auto">
+
       {newAchievement && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-yellow-400 text-slate-900 font-semibold px-6 py-3 rounded-full shadow-lg animate-bounce">
           {newAchievement}
+        </div>
+      )}
+
+      {collectMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-400 text-white font-semibold px-6 py-3 rounded-full shadow-lg animate-bounce">
+          {collectMessage}
         </div>
       )}
 
@@ -349,7 +392,7 @@ export function CityView() {
           <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <h3 className="font-semibold text-red-900 mb-1">City in Decay!</h3>
-            <p className="text-red-700 text-sm mb-3">You missed a day. Your buildings need repairs.</p>
+            <p className="text-red-700 text-sm mb-3">You missed a day. Your buildings need repairs and passive income is paused.</p>
             <button onClick={handleRepair} disabled={repairing || (!!profile && profile.gem_balance < totalRepairCost)}
               className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
               <Wrench className="w-4 h-4" />
@@ -359,6 +402,64 @@ export function CityView() {
         </div>
       )}
 
+      {/* Passive income banner */}
+      {!city.is_decayed && buildings.length > 0 && (
+        <div className={`rounded-xl p-4 mb-6 border-2 transition-all ${
+          canCollect
+            ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300'
+            : 'bg-slate-50 border-slate-200'
+        }`}>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">{canCollect ? '💰' : '🏗️'}</div>
+              <div>
+                <p className="font-semibold text-slate-900">
+                  {canCollect ? 'Gems ready to collect!' : 'City is generating gems...'}
+                </p>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <p className="text-sm text-slate-600">
+                    <span className="font-bold text-amber-600">{pendingGems} gems</span> accumulated
+                    {hoursAccumulated > 0 && ` over ${hoursAccumulated}h`}
+                  </p>
+                  <div className="flex items-center gap-1 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    <span>{gemsPerHour}/hr</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleCollect}
+              disabled={!canCollect || collecting}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${
+                canCollect
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <Gem className="w-4 h-4" />
+              {collecting ? 'Collecting...' : canCollect ? 'Collect' : 'Not enough yet'}
+            </button>
+          </div>
+
+          {/* Mini progress bar to 0.5 gem threshold */}
+          {!canCollect && (
+            <div className="mt-3">
+              <div className="bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-amber-400 h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min((pendingGems / 0.5) * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                {(0.5 - pendingGems).toFixed(1)} more gems until you can collect
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* City canvas */}
       <div className="bg-[#1a1a2e] rounded-xl shadow-sm overflow-hidden mb-6">
         <div className="flex items-center justify-between p-4">
           <div>
@@ -373,6 +474,7 @@ export function CityView() {
         <canvas ref={canvasRef} width={640} height={380} className="w-full" style={{ imageRendering: 'pixelated' }} />
       </div>
 
+      {/* Place buildings */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <h3 className="font-semibold text-slate-900 mb-1">Place a Building</h3>
         <p className="text-slate-500 text-sm mb-4">World {city.world_level} limits apply</p>
@@ -383,6 +485,19 @@ export function CityView() {
             const isFull = buildings.length >= totalSlots;
             const isMaxed = remaining <= 0;
             const disabled = !canAfford || isFull || isMaxed;
+            const rate = (0.05 * Math.round((
+              type.id === 'tree' ? 0.05 :
+              type.id === 'house' ? 0.10 :
+              type.id === 'shop' ? 0.15 :
+              type.id === 'apartment' ? 0.20 :
+              type.id === 'tower' ? 0.40 :
+              type.id === 'fountain' ? 0.10 :
+              type.id === 'school' ? 0.25 :
+              type.id === 'hospital' ? 0.25 :
+              type.id === 'bridge' ? 0.15 :
+              type.id === 'theatre' ? 0.30 :
+              type.id === 'bank' ? 0.35 : 0.05
+            ) / 0.05));
 
             return (
               <button key={type.id} onClick={() => handlePlace(type.id)} disabled={disabled}
@@ -397,6 +512,7 @@ export function CityView() {
                   <Gem className="w-3 h-3 text-blue-500" />
                   <span>{type.cost}</span>
                 </div>
+                <div className="text-xs text-amber-500 mt-0.5">+{type.id === 'tree' ? 0.05 : type.id === 'house' ? 0.10 : type.id === 'shop' ? 0.15 : type.id === 'apartment' ? 0.20 : type.id === 'tower' ? 0.40 : type.id === 'fountain' ? 0.10 : type.id === 'school' ? 0.25 : type.id === 'hospital' ? 0.25 : type.id === 'bridge' ? 0.15 : type.id === 'theatre' ? 0.30 : 0.35}/hr</div>
                 <div className={`text-xs mt-1 font-medium ${isMaxed ? 'text-red-500' : 'text-slate-400'}`}>
                   {isMaxed ? 'Maxed out' : `${remaining} left`}
                 </div>
