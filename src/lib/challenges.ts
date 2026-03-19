@@ -35,8 +35,7 @@ function getLocalDateString(): string {
 
 function getWeekStart(): string {
   const d = new Date();
-  const day = d.getDay();
-  const diff = (day + 6) % 7; // Monday = 0
+  const diff = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - diff);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -79,13 +78,14 @@ export async function checkDailyChallengeEligibility(
     return instances.every(i => i.completed);
   }
 
-  if (challenge.challenge_type === 'streak') {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('streak_count')
-      .eq('id', userId)
-      .maybeSingle();
-    return (profile?.streak_count ?? 0) >= challenge.required_value;
+  if (challenge.challenge_type === 'complete_goals_count') {
+    const { data: instances } = await supabase
+      .from('daily_goal_instances')
+      .select('completed')
+      .eq('user_id', userId)
+      .eq('date', today);
+    const completedCount = instances?.filter(i => i.completed).length ?? 0;
+    return completedCount >= challenge.required_value;
   }
 
   if (challenge.challenge_type === 'place_building') {
@@ -115,18 +115,25 @@ export async function completeDaily(
   if (!isEligible) {
     const messages: Record<string, string> = {
       complete_all_goals: 'Complete all your goals today first!',
-      streak: `You need at least a ${challenge.required_value} day streak!`,
-      place_building: 'Place a building in your city today first!',
+      complete_goals_count: `Complete ${challenge.required_value} goals today first!`,
+      place_building: `Place ${challenge.required_value} building(s) in your city today first!`,
     };
-    return { success: false, message: messages[challenge.challenge_type] ?? 'Requirements not met yet!' };
+    return {
+      success: false,
+      message: messages[challenge.challenge_type] ?? 'Requirements not met yet!',
+    };
   }
 
   const { error } = await supabase
     .from('user_challenge_completions')
-    .insert({ user_id: userId, challenge_id: challenge.id, gems_earned: challenge.gem_reward });
+    .insert({
+      user_id: userId,
+      challenge_id: challenge.id,
+      gems_earned: challenge.gem_reward,
+    });
 
   if (error) {
-    if (error.code === '23505') return { success: false, message: 'Already completed!' };
+    if (error.code === '23505') return { success: false, message: 'Already completed today!' };
     return { success: false, message: 'Something went wrong.' };
   }
 
@@ -175,7 +182,6 @@ export async function checkWeeklyChallengeEligibility(
   const weekStart = getWeekStart();
 
   if (challenge.challenge_type === 'goals_days') {
-    // Count distinct days this week where all goals were completed
     const { data: instances } = await supabase
       .from('daily_goal_instances')
       .select('date, completed')
@@ -191,12 +197,13 @@ export async function checkWeeklyChallengeEligibility(
       if (row.completed) byDate[row.date].completed++;
     });
 
-    const fullDays = Object.values(byDate).filter(d => d.total > 0 && d.completed === d.total).length;
+    const fullDays = Object.values(byDate).filter(
+      d => d.total > 0 && d.completed === d.total
+    ).length;
     return fullDays >= challenge.required_value;
   }
 
   if (challenge.challenge_type === 'gems_earned') {
-    // Count gems earned this week from goal completions
     const { data: instances } = await supabase
       .from('daily_goal_instances')
       .select('gems_earned')
@@ -249,15 +256,22 @@ export async function completeWeekly(
       place_buildings: `Place ${challenge.required_value} buildings this week first!`,
       streak: `You need at least a ${challenge.required_value} day streak!`,
     };
-    return { success: false, message: messages[challenge.challenge_type] ?? 'Requirements not met yet!' };
+    return {
+      success: false,
+      message: messages[challenge.challenge_type] ?? 'Requirements not met yet!',
+    };
   }
 
   const { error } = await supabase
     .from('user_weekly_challenge_completions')
-    .insert({ user_id: userId, challenge_id: challenge.id, gems_earned: challenge.gem_reward });
+    .insert({
+      user_id: userId,
+      challenge_id: challenge.id,
+      gems_earned: challenge.gem_reward,
+    });
 
   if (error) {
-    if (error.code === '23505') return { success: false, message: 'Already completed!' };
+    if (error.code === '23505') return { success: false, message: 'Already completed this week!' };
     return { success: false, message: 'Something went wrong.' };
   }
 
