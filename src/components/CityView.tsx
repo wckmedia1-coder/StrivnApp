@@ -2,22 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Gem, AlertCircle, Wrench } from 'lucide-react';
 import { supabase, City, Building } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { repairCity } from '../lib/gameLogic';
+import { repairCity, getAvailableBuildings, getRemainingAllowed, getTotalSlotsForWorld, BuildingType } from '../lib/gameLogic';
 import { checkAndAwardAchievements } from '../lib/achievements';
-
-const BUILDING_TYPES = [
-  { id: 'tree',      emoji: '🌳', name: 'Tree',      cost: 5  },
-  { id: 'house',     emoji: '🏠', name: 'House',     cost: 10 },
-  { id: 'shop',      emoji: '🏪', name: 'Shop',      cost: 15 },
-  { id: 'apartment', emoji: '🏢', name: 'Apartment', cost: 25 },
-  { id: 'tower',     emoji: '🏙️', name: 'Tower',     cost: 40 },
-];
-
-const SLOTS = [
-  {x:20},{x:88},{x:162},{x:235},
-  {x:295},{x:362},{x:432},{x:495},
-  {x:542},{x:570},{x:595},{x:615},
-];
 
 export function CityView() {
   const { user, profile, refreshProfile } = useAuth();
@@ -34,7 +20,17 @@ export function CityView() {
     { x: 924,  speed: 2.0, color: '#fdd835', color2: '#f57f17', dir: -1 },
   ]);
   const animRef = useRef<number>();
-  const buildingsRef = useRef<{type: string, x: number}[]>([]);
+  const buildingsRef = useRef<{ type: string; x: number }[]>([]);
+
+  const SLOTS = [
+    {x:20},{x:88},{x:162},{x:235},
+    {x:295},{x:362},{x:432},{x:495},
+    {x:542},{x:570},{x:595},{x:615},
+    {x:50},{x:130},{x:210},{x:290},
+    {x:370},{x:450},{x:530},{x:610},
+    {x:35},{x:115},{x:195},{x:275},
+    {x:355},{x:435},{x:515},{x:595},
+  ];
 
   useEffect(() => {
     if (user) loadCity();
@@ -53,7 +49,6 @@ export function CityView() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
     const W = canvas.width, H = canvas.height;
-
     const GROUND_Y = H * 0.52;
     const PAVEMENT_H = 38;
     const KERB_H = 4;
@@ -154,13 +149,83 @@ export function CityView() {
       ctx.fillStyle='#212121'; ctx.fillRect(x+28,base-32,16,32);
       ctx.fillStyle='#546e7a'; ctx.fillRect(x+30,base-30,12,20);
     }
-    function drawBuilding(type:string,x:number) {
+    function drawFountain(x:number) {
+      const base=GROUND_Y;
+      ctx.fillStyle='#0077b6'; ctx.beginPath(); ctx.ellipse(x+28,base-12,20,10,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#90e0ef'; ctx.beginPath(); ctx.ellipse(x+28,base-14,16,8,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#caf0f8'; ctx.fillRect(x+25,base-34,6,20);
+      ctx.fillStyle='#90e0ef'; ctx.fillRect(x+17,base-36,4,4); ctx.fillRect(x+35,base-36,4,4); ctx.fillRect(x+25,base-40,4,4);
+    }
+    function drawSchool(x:number) {
+      const base=GROUND_Y,w=80,h=72;
+      ctx.fillStyle='#f9a825'; ctx.fillRect(x,base-h,w,h);
+      ctx.fillStyle='#f57f17'; ctx.fillRect(x+w-10,base-h,10,h);
+      ctx.fillStyle='#b71c1c'; ctx.fillRect(x-4,base-h-8,w+8,12);
+      ctx.fillStyle='#fff'; ctx.fillRect(x+8,base-h+10,w-20,14);
+      ctx.fillStyle='#b71c1c'; ctx.font='bold 7px Courier New'; ctx.fillText('SCHOOL',x+12,base-h+21);
+      ctx.fillStyle='#90caf9'; ctx.fillRect(x+6,base-42,20,18); ctx.fillRect(x+54,base-42,20,18);
+      ctx.fillStyle='#4e342e'; ctx.fillRect(x+32,base-28,16,28);
+      ctx.fillStyle='#b71c1c'; ctx.fillRect(x+w/2-4,base-h-20,8,14);
+    }
+    function drawHospital(x:number) {
+      const base=GROUND_Y,w=80,h=90;
+      ctx.fillStyle='#ffffff'; ctx.fillRect(x,base-h,w,h);
+      ctx.fillStyle='#e0e0e0'; ctx.fillRect(x+w-10,base-h,10,h);
+      ctx.fillStyle='#1565c0'; ctx.fillRect(x-4,base-h-8,w+8,12);
+      ctx.fillStyle='#e53935';
+      ctx.fillRect(x+w/2-12,base-h+14,24,8);
+      ctx.fillRect(x+w/2-4,base-h+8,8,20);
+      ctx.fillStyle='#90caf9'; ctx.fillRect(x+6,base-52,18,16); ctx.fillRect(x+56,base-52,18,16); ctx.fillRect(x+6,base-30,18,16); ctx.fillRect(x+56,base-30,18,16);
+      ctx.fillStyle='#1565c0'; ctx.fillRect(x+32,base-28,16,28);
+    }
+    function drawBridge(x:number) {
+      const base=GROUND_Y;
+      ctx.fillStyle='#78909c'; ctx.fillRect(x,base-20,80,10);
+      ctx.fillStyle='#607d8b';
+      ctx.fillRect(x+5,base-40,8,20); ctx.fillRect(x+67,base-40,8,20);
+      ctx.fillRect(x+25,base-32,8,12); ctx.fillRect(x+47,base-32,8,12);
+      ctx.fillStyle='#90a4ae';
+      ctx.beginPath(); ctx.moveTo(x+9,base-40); ctx.lineTo(x+29,base-32); ctx.strokeStyle='#90a4ae'; ctx.lineWidth=2; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x+71,base-40); ctx.lineTo(x+51,base-32); ctx.stroke();
+      ctx.fillStyle='#546e7a'; ctx.fillRect(x,base-12,80,12);
+    }
+    function drawTheatre(x:number) {
+      const base=GROUND_Y,w=80,h=80;
+      ctx.fillStyle='#6a1b9a'; ctx.fillRect(x,base-h,w,h);
+      ctx.fillStyle='#4a148c'; ctx.fillRect(x+w-10,base-h,10,h);
+      ctx.fillStyle='#ffd600'; ctx.fillRect(x-4,base-h-8,w+8,12);
+      ctx.fillStyle='#ffd600';
+      ctx.beginPath(); ctx.arc(x+w/2,base-h,20,Math.PI,0); ctx.fill();
+      ctx.fillStyle='#6a1b9a'; ctx.fillRect(x+10,base-h-8,w-20,10);
+      ctx.fillStyle='#f3e5f5'; ctx.fillRect(x+8,base-52,18,18); ctx.fillRect(x+54,base-52,18,18);
+      ctx.fillStyle='#e53935'; ctx.fillRect(x+28,base-28,24,28);
+      ctx.fillStyle='#ffd600'; ctx.font='bold 6px Courier New'; ctx.fillText('THEATRE',x+10,base-h+22);
+    }
+    function drawBank(x:number) {
+      const base=GROUND_Y,w=80,h=85;
+      ctx.fillStyle='#37474f'; ctx.fillRect(x,base-h,w,h);
+      ctx.fillStyle='#263238'; ctx.fillRect(x+w-10,base-h,10,h);
+      for(let c=0;c<5;c++){ ctx.fillStyle='#90a4ae'; ctx.fillRect(x+6+c*14,base-h,8,h); }
+      ctx.fillStyle='#ffd600'; ctx.fillRect(x-4,base-h-8,w+8,12);
+      ctx.fillStyle='#ffd600'; ctx.font='bold 6px Courier New'; ctx.fillText('BANK',x+28,base-h+22);
+      ctx.fillStyle='#212121'; ctx.fillRect(x+30,base-30,20,30);
+      ctx.fillStyle='#ffd600'; ctx.fillRect(x+36,base-18,8,8);
+    }
+
+    function drawBuilding(type:string, x:number) {
       if(type==='tree') drawTree(x);
       else if(type==='house') drawHouse(x);
       else if(type==='shop') drawShop(x);
       else if(type==='apartment') drawApartment(x);
       else if(type==='tower') drawTower(x);
+      else if(type==='fountain') drawFountain(x);
+      else if(type==='school') drawSchool(x);
+      else if(type==='hospital') drawHospital(x);
+      else if(type==='bridge') drawBridge(x);
+      else if(type==='theatre') drawTheatre(x);
+      else if(type==='bank') drawBank(x);
     }
+
     function drawCar(car:any) {
       const laneY=car.dir===1?LANE1_Y:LANE2_Y,cx=car.x,cw=58,ch=24;
       if(car.dir===1){
@@ -213,10 +278,26 @@ export function CityView() {
 
   const handlePlace = async (typeId: string) => {
     if (!city || !profile) return;
-    const buildingType = BUILDING_TYPES.find(t => t.id === typeId);
+    const availableTypes = getAvailableBuildings(city.world_level);
+    const buildingType = availableTypes.find(t => t.id === typeId);
     if (!buildingType) return;
-    if (profile.gem_balance < buildingType.cost) { alert(`Not enough gems! Need ${buildingType.cost} gems.`); return; }
-    if (buildings.length >= SLOTS.length) { alert('Your city is full! More slots coming soon.'); return; }
+
+    if (profile.gem_balance < buildingType.cost) {
+      alert(`Not enough gems! Need ${buildingType.cost} gems.`);
+      return;
+    }
+
+    const totalSlots = getTotalSlotsForWorld(city.world_level);
+    if (buildings.length >= totalSlots) {
+      alert('Your city is full for this world!');
+      return;
+    }
+
+    const remaining = getRemainingAllowed(typeId, city.world_level, buildings);
+    if (remaining <= 0) {
+      alert(`You've reached the max ${buildingType.name}s for this world!`);
+      return;
+    }
 
     const slot = SLOTS[buildings.length];
     const { data: newBuilding, error } = await supabase.from('buildings').insert({
@@ -226,8 +307,6 @@ export function CityView() {
     }).select().single();
 
     if (newBuilding && !error) {
-      const newBuildings = [...buildings, newBuilding];
-      setBuildings(newBuildings);
       await supabase.from('profiles').update({ gem_balance: profile.gem_balance - buildingType.cost }).eq('id', user?.id);
       await supabase.from('cities').update({ total_gems_spent: city.total_gems_spent + buildingType.cost }).eq('id', city.id);
       await refreshProfile();
@@ -254,6 +333,8 @@ export function CityView() {
 
   const damagedBuildings = buildings.filter(b => b.is_damaged);
   const totalRepairCost = damagedBuildings.reduce((sum, b) => sum + b.repair_cost, 0);
+  const availableTypes = getAvailableBuildings(city.world_level);
+  const totalSlots = getTotalSlotsForWorld(city.world_level);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -280,27 +361,35 @@ export function CityView() {
 
       <div className="bg-[#1a1a2e] rounded-xl shadow-sm overflow-hidden mb-6">
         <div className="flex items-center justify-between p-4">
-          <h2 className="text-xl font-bold text-white">Your City</h2>
+          <div>
+            <h2 className="text-xl font-bold text-white">Your City</h2>
+            <p className="text-slate-400 text-sm">World {city.world_level}</p>
+          </div>
           <div className="text-right">
             <div className="text-xs text-slate-400">Buildings</div>
-            <div className="text-lg font-bold text-white">{buildings.length}/{SLOTS.length}</div>
+            <div className="text-lg font-bold text-white">{buildings.length}/{totalSlots}</div>
           </div>
         </div>
-        <canvas ref={canvasRef} width={640} height={380} className="w-full" style={{imageRendering:'pixelated'}} />
+        <canvas ref={canvasRef} width={640} height={380} className="w-full" style={{ imageRendering: 'pixelated' }} />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="font-semibold text-slate-900 mb-4">Place a Building</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {BUILDING_TYPES.map(type => {
+        <h3 className="font-semibold text-slate-900 mb-1">Place a Building</h3>
+        <p className="text-slate-500 text-sm mb-4">World {city.world_level} limits apply</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {availableTypes.map(type => {
             const canAfford = profile && profile.gem_balance >= type.cost;
-            const isFull = buildings.length >= SLOTS.length;
+            const remaining = getRemainingAllowed(type.id, city.world_level, buildings);
+            const isFull = buildings.length >= totalSlots;
+            const isMaxed = remaining <= 0;
+            const disabled = !canAfford || isFull || isMaxed;
+
             return (
-              <button key={type.id} onClick={() => handlePlace(type.id)} disabled={!canAfford || isFull}
+              <button key={type.id} onClick={() => handlePlace(type.id)} disabled={disabled}
                 className={`p-3 rounded-lg border-2 transition-all text-center ${
-                  canAfford && !isFull
-                    ? 'border-slate-200 hover:border-slate-900 hover:bg-slate-900 hover:text-white bg-white'
-                    : 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                  disabled
+                    ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                    : 'border-slate-200 hover:border-slate-900 hover:bg-slate-900 hover:text-white bg-white'
                 }`}>
                 <div className="text-2xl mb-1">{type.emoji}</div>
                 <div className="text-sm font-medium">{type.name}</div>
@@ -308,12 +397,17 @@ export function CityView() {
                   <Gem className="w-3 h-3 text-blue-500" />
                   <span>{type.cost}</span>
                 </div>
+                <div className={`text-xs mt-1 font-medium ${isMaxed ? 'text-red-500' : 'text-slate-400'}`}>
+                  {isMaxed ? 'Maxed out' : `${remaining} left`}
+                </div>
               </button>
             );
           })}
         </div>
-        {buildings.length >= SLOTS.length && (
-          <p className="text-center text-slate-500 text-sm mt-4">🎉 Your city is full! More worlds coming soon.</p>
+        {buildings.length >= totalSlots && (
+          <p className="text-center text-slate-500 text-sm mt-4">
+            🎉 City complete! Defeat the boss to unlock the next world.
+          </p>
         )}
       </div>
     </div>
