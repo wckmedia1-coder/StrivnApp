@@ -33,7 +33,7 @@ export function GoalsView() {
 
   const today = new Date().toISOString().split('T')[0];
   const totalGoalsToday = todayInstances.length;
-  const canAddMore = totalGoalsToday < 5;
+  const canAddMore = goals.filter(g => g.is_active).length < 5;
 
   useEffect(() => {
     if (user) {
