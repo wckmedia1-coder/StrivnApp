@@ -3,11 +3,13 @@ import { Plus, Check, Flame, X, Pencil, Save, ChevronUp } from 'lucide-react';
 import { supabase, Goal, DailyGoalInstance } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { checkAndAwardAchievements } from '../lib/achievements';
+import { detectCategory, incrementTrait } from '../lib/gameLogic';
 
 type GoalWithProgress = Goal & {
   goal_type?: string;
   target_value?: number;
   unit?: string;
+  category?: string;
 };
 
 type InstanceWithProgress = DailyGoalInstance & {
@@ -66,6 +68,9 @@ export function GoalsView() {
     if (!newGoalTitle.trim() || !canAddMore) return;
     if (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0)) return;
 
+    // Auto-detect category from title
+    const category = detectCategory(newGoalTitle.trim());
+
     const { data, error } = await supabase
       .from('goals')
       .insert({
@@ -75,6 +80,7 @@ export function GoalsView() {
         goal_type: goalType,
         target_value: goalType === 'progress' ? parseFloat(targetValue) : 1,
         unit: goalType === 'progress' ? unit.trim() : '',
+        category,
       })
       .select()
       .single();
@@ -88,13 +94,13 @@ export function GoalsView() {
       setShowAddGoal(false);
 
       await supabase.from('daily_goal_instances').insert({
-  goal_id: data.id,
-  user_id: user?.id,
-  date: today,
-  completed: false,
-  gems_earned: 0,
-  progress_value: 0,
-});
+        goal_id: data.id,
+        user_id: user?.id,
+        date: today,
+        completed: false,
+        gems_earned: 0,
+        progress_value: 0,
+      });
 
       await loadTodayInstances();
     }
@@ -116,15 +122,23 @@ export function GoalsView() {
   };
 
   const saveEdit = async (goalId: string) => {
-  if (!editingTitle.trim()) return;
-  await supabase
-    .from('goals')
-    .update({ title: editingTitle.trim() })
-    .eq('id', goalId);
-  setGoals(goals.map(g => g.id === goalId ? { ...g, title: editingTitle.trim() } : g));
-  setEditingGoalId(null);
-  setEditingTitle('');
-};
+    if (!editingTitle.trim()) return;
+    await supabase
+      .from('goals')
+      .update({ title: editingTitle.trim() })
+      .eq('id', goalId);
+    setGoals(goals.map(g => g.id === goalId ? { ...g, title: editingTitle.trim() } : g));
+    setEditingGoalId(null);
+    setEditingTitle('');
+  };
+
+  // Helper: fire trait increment after a goal completes
+  const handleTraitIncrement = async (goalId: string) => {
+    if (!user) return;
+    const goal = goals.find(g => g.id === goalId);
+    const category = goal?.category ?? detectCategory(goal?.title ?? '');
+    await incrementTrait(user.id, category as any);
+  };
 
   // Simple goal — just tick it
   const completeSimpleGoal = async (instance: InstanceWithProgress) => {
@@ -143,6 +157,9 @@ export function GoalsView() {
       total_goals_completed: (profile.total_goals_completed ?? 0) + 1,
       last_active_date: today,
     }).eq('id', user?.id);
+
+    // Increment character trait for this goal's category
+    await handleTraitIncrement(instance.goal_id);
 
     await loadTodayInstances();
     await refreshProfile();
@@ -182,6 +199,10 @@ export function GoalsView() {
         total_goals_completed: (profile.total_goals_completed ?? 0) + 1,
         last_active_date: today,
       }).eq('id', user?.id);
+
+      // Increment character trait for this goal's category
+      await handleTraitIncrement(instance.goal_id);
+
       await refreshProfile();
 
       const earned = await checkAndAwardAchievements(user!.id);
@@ -272,9 +293,19 @@ export function GoalsView() {
                         className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                         autoFocus maxLength={100} />
                     ) : (
-                      <p className={`font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
-                        {goal.title}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className={`font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                          {goal.title}
+                        </p>
+                        {/* Show detected category badge */}
+                        {goal.category && goal.category !== 'general' && (
+                          <span className="text-xs text-slate-400">
+                            {['fitness','reading','mindfulness','creativity','sleep','nutrition'].includes(goal.category)
+                              ? { fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' }[goal.category as string]
+                              : null}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {isProgress && !isEditing && (
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -377,6 +408,18 @@ export function GoalsView() {
               placeholder="Enter your goal..." maxLength={100} autoFocus
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900" />
 
+            {/* Live category preview */}
+            {newGoalTitle.trim() && (
+              <p className="text-xs text-slate-500">
+                Detected category:{' '}
+                <span className="font-medium text-slate-700">
+                  {{ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness',
+                     creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition',
+                     general:'⚪ General' }[detectCategory(newGoalTitle)] ?? 'General'}
+                </span>
+              </p>
+            )}
+
             {/* Goal type toggle */}
             <div className="flex gap-2">
               <button onClick={() => setGoalType('simple')}
@@ -428,6 +471,7 @@ export function GoalsView() {
           <li>• <strong>Simple</strong> goals — just tick when done</li>
           <li>• <strong>Progress</strong> goals — tap + to log your progress</li>
           <li>• Each completed goal = {isHotStreak ? '2 gems (Hot Streak! 🔥)' : '1 gem'}</li>
+          <li>• Completing goals evolves your character 🧬</li>
           <li>• Completed goals are locked — no cheating! 😄</li>
           <li>• Maintain a 5-day streak for bonus rewards</li>
         </ul>
