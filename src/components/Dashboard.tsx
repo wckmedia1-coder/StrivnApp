@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Home, Building2, Users, User, LogOut, Gem, Trophy, Calendar } from 'lucide-react';
+import { Home, User, Users, LogOut, Gem, Trophy, Calendar } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoalsView } from './GoalsView';
-import { CityView } from './CityView';
+import { CharacterView } from './CharacterView';
 import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
 import { AchievementsView } from './AchievementsView';
 import { ChallengesView } from './ChallengesView';
 import { DailyBriefing } from './DailyBriefing';
 
-type View = 'goals' | 'city' | 'social' | 'profile' | 'achievements' | 'challenges';
+type View = 'goals' | 'character' | 'social' | 'profile' | 'achievements' | 'challenges';
 
 const BRIEFING_KEY = 'strivn_last_briefing';
 
@@ -41,7 +41,7 @@ export function Dashboard() {
   const navItems: { id: View; icon: React.ElementType; label: string }[] = [
     { id: 'goals', icon: Home, label: 'Goals' },
     { id: 'challenges', icon: Calendar, label: 'Challenges' },
-    { id: 'city', icon: Building2, label: 'City' },
+    { id: 'character', icon: User, label: 'Character' },
     { id: 'social', icon: Users, label: 'Social' },
     { id: 'achievements', icon: Trophy, label: 'Achievements' },
     { id: 'profile', icon: User, label: 'Profile' },
@@ -114,7 +114,7 @@ export function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {currentView === 'goals' && <GoalsView />}
         {currentView === 'challenges' && <ChallengesView />}
-        {currentView === 'city' && <CityView />}
+        {currentView === 'character' && <CharacterView />}
         {currentView === 'social' && <SocialView />}
         {currentView === 'achievements' && <AchievementsView />}
         {currentView === 'profile' && <ProfileView />}
