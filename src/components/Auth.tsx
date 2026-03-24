@@ -8,7 +8,7 @@ export function Auth() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const { signUp } = useAuth();
+  const { signUp, user, loading: authLoading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +28,12 @@ export function Auth() {
     }
     setLoading(false);
   };
+if (authLoading) return null;
 
+if (user) {
+  window.location.href = "/";
+  return null;
+}
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a0533] via-[#0d0d1a] to-[#0d1a2e] flex items-center justify-center p-4">
 
