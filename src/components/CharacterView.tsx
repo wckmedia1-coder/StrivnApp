@@ -12,6 +12,9 @@ import {
 
 type TraitMap = Partial<Record<GoalCategory, CharacterTrait>>;
 
+// All known categories — "other" is included as a catch-all for AI goals
+const ALL_CATEGORIES = [...CATEGORIES.map(c => c.id), 'other'] as GoalCategory[];
+
 export function CharacterView() {
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -43,7 +46,20 @@ export function CharacterView() {
     if (!user) return;
     const list = await loadCharacterTraits(user.id);
     const map: TraitMap = {};
-    for (const t of list) map[t.category as GoalCategory] = t;
+    for (const t of list) {
+      // If the category doesn't match a known category, map it to "other"
+      const cat = CATEGORIES.find(c => c.id === t.category) ? t.category as GoalCategory : 'other' as GoalCategory;
+      // Merge into "other" if already exists
+      if (map[cat]) {
+        map[cat] = {
+          ...map[cat]!,
+          completions: (map[cat]!.completions ?? 0) + (t.completions ?? 0),
+          level: Math.max(map[cat]!.level ?? 0, t.level ?? 0),
+        };
+      } else {
+        map[cat] = { ...t, category: cat };
+      }
+    }
     setTraits(map); traitsRef.current = map; setLoading(false);
   };
 
@@ -84,6 +100,19 @@ export function CharacterView() {
     for (let gx = 0; gx < W; gx += 8) ctx.fillRect(gx, groundY, 3, 4 + (gx % 3));
     ctx.fillStyle = '#1c1c2e'; ctx.fillRect(W / 2 - 80, groundY - 4, 160, 8);
     ctx.fillStyle = '#2a2a3e'; ctx.fillRect(W / 2 - 78, groundY - 2, 156, 4);
+
+    // "Other" category: sparkle ambient effect
+    const otherLevel = getLevel('other' as GoalCategory);
+    if (otherLevel >= 1) {
+      for (let sp = 0; sp < otherLevel * 3; sp++) {
+        const t = (frameRef.current * 0.015 + sp * 0.9) % (Math.PI * 2);
+        ctx.globalAlpha = Math.sin(t) * 0.4 + 0.2;
+        ctx.fillStyle = '#c084fc';
+        const sx = (sp * 83 + 20) % W, sy = ((sp * 57 + 15) % (H * 0.55));
+        ctx.fillRect(sx, sy, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   function drawProps(ctx: CanvasRenderingContext2D, W: number, H: number) {
@@ -196,8 +225,8 @@ export function CharacterView() {
     }
     const totalLevel = Object.values(traitsRef.current).reduce((s, t) => s + (t?.level ?? 0), 0);
     if (totalLevel > 0) {
-      ctx.fillStyle = '#ffd600'; ctx.fillRect(CX + 14, headY - 10, 18, 14);
-      ctx.fillStyle = '#1a1a2e'; ctx.font = 'bold 9px monospace'; ctx.fillText(`Lv${totalLevel}`, CX + 16, headY + 1);
+      ctx.fillStyle = '#6366f1'; ctx.fillRect(CX + 14, headY - 10, 22, 14);
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px monospace'; ctx.fillText(`Lv${totalLevel}`, CX + 16, headY + 1);
     }
   }
 
@@ -223,7 +252,13 @@ export function CharacterView() {
   }
 
   const totalCompletions = Object.values(traits).reduce((s, t) => s + (t?.completions ?? 0), 0);
-  const activeCats = CATEGORIES.filter(c => (traits[c.id]?.completions ?? 0) > 0);
+
+  // Build display categories: standard ones + "other" if it has completions
+  const displayCategories = [
+    ...CATEGORIES.filter(c => c.id !== 'general'),
+    { id: 'other', label: 'Other', emoji: '✨', description: 'Goals that don\'t fit a specific category — they still count!' },
+  ];
+  const activeCats = displayCategories.filter(c => (traits[c.id as GoalCategory]?.completions ?? 0) > 0);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -235,18 +270,18 @@ export function CharacterView() {
               {totalCompletions === 0 ? 'Complete goals to evolve your character' : `${totalCompletions} completions · ${activeCats.length} trait${activeCats.length !== 1 ? 's' : ''} unlocked`}
             </p>
           </div>
-          <div className="flex gap-2">{activeCats.slice(0, 4).map(c => <span key={c.id} className="text-xl">{c.emoji}</span>)}</div>
+          <div className="flex gap-2">{activeCats.slice(0, 5).map(c => <span key={c.id} className="text-xl">{c.emoji}</span>)}</div>
         </div>
         {loading ? (
-          <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading character...</div>
+          <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading character…</div>
         ) : (
           <canvas ref={canvasRef} width={640} height={340} className="w-full" style={{ imageRendering: 'pixelated' }} />
         )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {CATEGORIES.filter(c => c.id !== 'general').map(cat => {
-          const trait = traits[cat.id];
+        {displayCategories.map(cat => {
+          const trait = traits[cat.id as GoalCategory];
           const completions = trait?.completions ?? 0;
           const { level, progress, completionsInLevel, completionsNeeded } = getProgressToNextLevel(completions);
           const isMaxed = level >= MAX_LEVEL, isUnlocked = completions > 0;
@@ -269,7 +304,7 @@ export function CharacterView() {
                 <>
                   <div className={`rounded-full h-1.5 overflow-hidden mb-1 ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-100'}`}>
                     <div className="h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${isMaxed ? 100 : progress * 100}%`, background: isMaxed ? 'linear-gradient(90deg,#f9a825,#ffd600)' : 'linear-gradient(90deg,#a855f7,#ec4899)' }} />
+                      style={{ width: `${isMaxed ? 100 : progress * 100}%`, background: isMaxed ? 'linear-gradient(90deg,#f9a825,#ffd600)' : 'linear-gradient(90deg,#6366f1,#a855f7)' }} />
                   </div>
                   <p className={`text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {isMaxed ? `${completions} completions — maxed!` : `${completionsInLevel}/${completionsNeeded} to level ${level + 1}`}
@@ -285,7 +320,7 @@ export function CharacterView() {
 
       {totalCompletions === 0 && (
         <div className={`text-center py-6 text-sm ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
-          <p className="text-3xl mb-2">🎯</p>
+          <p className="text-3xl mb-2">🌱</p>
           <p>Complete your first goal to start evolving your character.</p>
         </div>
       )}
