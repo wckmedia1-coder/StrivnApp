@@ -285,7 +285,7 @@ export function GoalsView() {
                         {goal.category && goal.category !== 'general' && (
                           <span className="text-xs text-slate-400">
                             {['fitness','reading','mindfulness','creativity','sleep','nutrition'].includes(goal.category)
-                              ? { fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' }[goal.category as string]
+                              ? ({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as Record<string,string>)[goal.category]
                               : null}
                           </span>
                         )}
@@ -374,7 +374,7 @@ export function GoalsView() {
 
         {!canAddMore && (
           <div className="w-full mt-4 py-3 px-4 bg-slate-50 rounded-lg text-center text-slate-500 text-sm">
-            🔒 Daily limit reached (5/5) — come back tomorrow!
+            Daily limit reached (5/5) — come back tomorrow!
           </div>
         )}
 
@@ -389,13 +389,69 @@ export function GoalsView() {
               <p className="text-xs text-slate-500">
                 Detected category:{' '}
                 <span className="font-medium text-slate-700">
-                  {{ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness',
+                  {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness',
                      creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition',
-                     general:'⚪ General' }[detectCategory(newGoalTitle)] ?? 'General'}
+                     general:'⚪ General' } as Record<string,string>)[detectCategory(newGoalTitle)] ?? 'General'}
                 </span>
               </p>
             )}
 
             <div className="flex gap-2">
-              <button onClick={() => setGoalType('simple')}
-  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
+              <button
+                onClick={() => setGoalType('simple')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
+                Simple
+              </button>
+              <button
+                onClick={() => setGoalType('progress')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'progress' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
+                Progress
+              </button>
+            </div>
+
+            {goalType === 'progress' && (
+              <div className="flex gap-2">
+                <input type="number" value={targetValue} onChange={e => setTargetValue(e.target.value)}
+                  placeholder="Target (e.g. 4)" min="1" step="0.1"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
+                  placeholder="Unit (e.g. L, km)" maxLength={10}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="rounded" />
+              <span className="text-slate-700">Recurring daily</span>
+            </label>
+
+            <div className="flex gap-2">
+              <button onClick={createGoal}
+                disabled={!newGoalTitle.trim() || (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0))}
+                className="flex-1 bg-slate-900 text-white py-2 px-4 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                Add Goal
+              </button>
+              <button onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setTargetValue(''); setUnit(''); setGoalType('simple'); }}
+                className="px-4 py-2 text-slate-600 hover:text-slate-900">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-slate-100 rounded-xl p-6">
+        <h3 className="font-semibold text-slate-900 mb-2">How it works</h3>
+        <ul className="text-sm text-slate-600 space-y-1">
+          <li>• Add up to 5 goals per day</li>
+          <li>• Simple goals — just tick when done</li>
+          <li>• Progress goals — tap + to log your progress</li>
+          <li>• Each completed goal = {isHotStreak ? '2 gems (Hot Streak! 🔥)' : '1 gem'}</li>
+          <li>• Completing goals evolves your character 🧬</li>
+          <li>• Completed goals are locked — no cheating! 😄</li>
+          <li>• Maintain a 5-day streak for bonus rewards</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
