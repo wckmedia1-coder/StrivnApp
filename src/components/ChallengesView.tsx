@@ -20,10 +20,7 @@ type DailyChallenge = {
   is_ai_generated?: boolean;
 };
 
-// ─── XP Scaling ─────────────────────────────────────────────────────────────
-// Level 1→2: 3xp, Level 2→3: 6xp, Level 3→4: 10xp, etc. (increases each level)
 export function xpToNextLevel(level: number): number {
-  // Base 3, grows by ~50% each level rounded to nearest int
   return Math.round(3 * Math.pow(1.5, level - 1));
 }
 
@@ -32,16 +29,17 @@ export function getLevelFromXp(totalXp: number): { level: number; xpInLevel: num
   let remaining = totalXp;
   while (true) {
     const needed = xpToNextLevel(level);
-    if (remaining < needed) {
-      return { level, xpInLevel: remaining, xpNeeded: needed };
-    }
+    if (remaining < needed) return { level, xpInLevel: remaining, xpNeeded: needed };
     remaining -= needed;
     level++;
   }
 }
 
-// ─── AI Suggested Codes ──────────────────────────────────────────────────────
-const CALM_SYSTEM_PROMPT = `You are a calm, supportive wellness coach for the app Strivn. 
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama3-8b-8192';
+
+const CALM_SYSTEM_PROMPT = `You are a calm, supportive wellness coach for the app Strivn.
 Generate short, gentle daily challenge suggestions personalised to the user's recent activity.
 Each challenge should feel achievable, calming, and growth-oriented.
 Respond ONLY with a valid JSON array of 3 objects, no markdown, no extra text.
@@ -49,7 +47,7 @@ Each object: { "title": string, "category": "fitness"|"sleep"|"nutrition"|"mindf
 For simple goals, target_value=1, unit="".
 Keep titles under 60 chars. Tone: warm, encouraging, calm.`;
 
-const today = () => {
+const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
@@ -70,21 +68,18 @@ export function ChallengesView() {
   const [showIncrementFor, setShowIncrementFor] = useState<string | null>(null);
   const [achievement, setAchievement] = useState<string | null>(null);
   const [levelUp, setLevelUp] = useState<number | null>(null);
-
-  // AI section state
-  const [aiSuggestions, setAiSuggestions] = useState<DailyChallenge['title'][]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestFull, setAiSuggestFull] = useState<any[]>([]);
   const [showAiSection, setShowAiSection] = useState(true);
+  const [aiError, setAiError] = useState<string | null>(null);
 
-  const todayStr = today();
+  const today = todayStr();
   const completedCount = challenges.filter(c => c.completed).length;
   const allComplete = challenges.length === 5 && completedCount === 5;
   const hasBonus = challenges.length === 6;
   const canAdd = challenges.length < 5 || (allComplete && !hasBonus);
   const isBonus = challenges.length === 5 && allComplete;
 
-  // XP from profile (we'll store total_xp on the profile — fallback to gems if not yet added)
   const totalXp = (profile as any)?.total_xp ?? 0;
   const { level, xpInLevel, xpNeeded } = getLevelFromXp(totalXp);
 
@@ -97,13 +92,12 @@ export function ChallengesView() {
       .from('daily_challenges')
       .select('*')
       .eq('user_id', user!.id)
-      .eq('date', todayStr)
+      .eq('date', today)
       .order('created_at', { ascending: true });
     setChallenges((data ?? []) as DailyChallenge[]);
     setLoading(false);
   };
 
-  // Build a personalised context string for the AI based on recent challenges
   const buildUserContext = () => {
     const names = challenges.map(c => c.title).join(', ');
     const cats = [...new Set(challenges.map(c => c.category))].join(', ');
@@ -113,25 +107,32 @@ export function ChallengesView() {
 
   const loadAiSuggestions = async () => {
     setAiLoading(true);
+    setAiError(null);
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      if (!GROQ_API_KEY) throw new Error('No API key configured');
+      const response = await fetch(GROQ_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: GROQ_MODEL,
           max_tokens: 1000,
-          system: CALM_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: buildUserContext() }],
+          messages: [
+            { role: 'system', content: CALM_SYSTEM_PROMPT },
+            { role: 'user', content: buildUserContext() },
+          ],
         }),
       });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
-      const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]';
+      const text = data.choices?.[0]?.message?.content ?? '[]';
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
       setAiSuggestFull(parsed);
-      setAiSuggestions(parsed.map((s: any) => s.title));
     } catch {
+      setAiError("Couldn't load suggestions right now. Try refreshing.");
       setAiSuggestFull([]);
-      setAiSuggestions([]);
     }
     setAiLoading(false);
   };
@@ -146,7 +147,7 @@ export function ChallengesView() {
       target_value: suggestion.target_value ?? 1,
       unit: suggestion.unit ?? '',
       category,
-      date: todayStr,
+      date: today,
       completed: false,
       progress_value: 0,
       xp_earned: 0,
@@ -155,7 +156,6 @@ export function ChallengesView() {
     if (data && !error) {
       setChallenges(prev => [...prev, data as DailyChallenge]);
       setAiSuggestFull(prev => prev.filter(s => s.title !== suggestion.title));
-      setAiSuggestions(prev => prev.filter(t => t !== suggestion.title));
     }
   };
 
@@ -170,7 +170,7 @@ export function ChallengesView() {
       target_value: goalType === 'progress' ? parseFloat(targetValue) : 1,
       unit: goalType === 'progress' ? unit.trim() : '',
       category,
-      date: todayStr,
+      date: today,
       completed: false,
       progress_value: 0,
       xp_earned: 0,
@@ -184,7 +184,6 @@ export function ChallengesView() {
   };
 
   const awardXp = async () => {
-    // 1 XP per completed challenge
     const oldXp = (profile as any)?.total_xp ?? 0;
     const newXp = oldXp + 1;
     const oldLevel = getLevelFromXp(oldXp).level;
@@ -197,7 +196,9 @@ export function ChallengesView() {
   const completeSimple = async (c: DailyChallenge) => {
     if (c.completed || !profile) return;
     await supabase.from('daily_challenges').update({
-      completed: true, completed_at: new Date().toISOString(), xp_earned: 1,
+      completed: true,
+      completed_at: new Date().toISOString(),
+      xp_earned: 1,
     }).eq('id', c.id);
     await incrementTrait(user!.id, c.category as any);
     await awardXp();
@@ -242,8 +243,7 @@ export function ChallengesView() {
     }
   };
 
-  // ── Calm theme tokens ──────────────────────────────────────────────────────
-  const accent = '#6366f1'; // indigo calm
+  const accent = '#6366f1';
   const accentSoft = dark ? 'bg-indigo-500/10' : 'bg-indigo-50';
   const card = `rounded-2xl border transition-all ${dark ? 'bg-[#1a1a2e] border-[#2a2a4a]' : 'bg-white border-slate-200/80 shadow-sm'}`;
   const text = dark ? 'text-white' : 'text-slate-800';
@@ -255,20 +255,19 @@ export function ChallengesView() {
   return (
     <div className="max-w-2xl mx-auto space-y-5">
 
-      {/* Toast notifications */}
       {achievement && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-indigo-500 to-violet-500 text-white font-semibold px-6 py-3 rounded-full shadow-xl animate-bounce">
           {achievement}
         </div>
       )}
       {levelUp && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-bold px-6 py-3 rounded-full shadow-xl animate-bounce"
-          onClick={() => setLevelUp(null)}>
+        <div onClick={() => setLevelUp(null)}
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-bold px-6 py-3 rounded-full shadow-xl animate-bounce cursor-pointer">
           ✨ Level Up! You're now Level {levelUp}
         </div>
       )}
 
-      {/* ── Header: XP & Progress ───────────────────────────────────────────── */}
+      {/* Header */}
       <div className={`${card} p-5`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -283,7 +282,6 @@ export function ChallengesView() {
               <Flame className="w-4 h-4" />
               <span>{profile?.streak_count ?? 0}</span>
             </div>
-            {/* XP Badge */}
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${dark ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-600'}`}>
               <span>Lv {level}</span>
               <span className="opacity-50">·</span>
@@ -292,19 +290,13 @@ export function ChallengesView() {
           </div>
         </div>
 
-        {/* Daily progress bar */}
         <div className={`rounded-full h-2 overflow-hidden mb-1 ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-100'}`}>
-          <div
-            className="h-2 rounded-full transition-all duration-700 bg-gradient-to-r from-indigo-500 to-violet-400"
-            style={{ width: `${challenges.length > 0 ? (completedCount / challenges.length) * 100 : 0}%` }}
-          />
+          <div className="h-2 rounded-full transition-all duration-700 bg-gradient-to-r from-indigo-500 to-violet-400"
+            style={{ width: `${challenges.length > 0 ? (completedCount / challenges.length) * 100 : 0}%` }} />
         </div>
-        {/* XP level progress bar */}
         <div className={`rounded-full h-1 overflow-hidden mt-2 ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-100'}`}>
-          <div
-            className="h-1 rounded-full transition-all duration-700 bg-gradient-to-r from-amber-400 to-orange-300"
-            style={{ width: `${(xpInLevel / xpNeeded) * 100}%` }}
-          />
+          <div className="h-1 rounded-full transition-all duration-700 bg-gradient-to-r from-amber-400 to-orange-300"
+            style={{ width: `${(xpInLevel / xpNeeded) * 100}%` }} />
         </div>
         <p className={`text-[10px] mt-1 ${subtext}`}>{xpInLevel}/{xpNeeded} XP to Level {level + 1} · Each challenge earns 1 XP</p>
 
@@ -315,27 +307,19 @@ export function ChallengesView() {
         )}
       </div>
 
-      {/* ── AI Suggested Challenges ─────────────────────────────────────────── */}
+      {/* AI Suggestions */}
       <div className={`${card} overflow-hidden`}>
-        <button
-          onClick={() => setShowAiSection(v => !v)}
-          className={`w-full flex items-center justify-between px-5 py-4 ${accentSoft} transition-colors`}
-        >
+        <button onClick={() => setShowAiSection(v => !v)}
+          className={`w-full flex items-center justify-between px-5 py-4 ${accentSoft} transition-colors`}>
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span className={`font-semibold text-sm ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>
-              AI Suggested for You
-            </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>
-              Personalised
-            </span>
+            <span className={`font-semibold text-sm ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>AI Suggested for You</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>Personalised</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={e => { e.stopPropagation(); loadAiSuggestions(); }}
+            <button onClick={e => { e.stopPropagation(); loadAiSuggestions(); }}
               className={`p-1.5 rounded-lg transition-colors ${dark ? 'hover:bg-indigo-500/20 text-slate-400 hover:text-indigo-300' : 'hover:bg-indigo-100 text-slate-400 hover:text-indigo-600'}`}
-              title="Refresh suggestions"
-            >
+              title="Refresh suggestions">
               <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
             </button>
             <ChevronDown className={`w-4 h-4 ${subtext} transition-transform ${showAiSection ? '' : '-rotate-90'}`} />
@@ -350,14 +334,17 @@ export function ChallengesView() {
                 Thinking of something just for you…
               </div>
             )}
-            {!aiLoading && aiSuggestFull.length === 0 && (
+            {!aiLoading && aiError && (
+              <p className={`text-sm text-center py-3 text-red-400`}>{aiError}</p>
+            )}
+            {!aiLoading && !aiError && aiSuggestFull.length === 0 && (
               <p className={`text-sm text-center py-3 ${subtext}`}>No suggestions right now — try refreshing.</p>
             )}
             {!aiLoading && aiSuggestFull.map((s, i) => (
               <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${dark ? 'bg-[#13132a] border-[#2a2a4a]' : 'bg-indigo-50/60 border-indigo-100'}`}>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className="text-base flex-shrink-0">
-                    {({ fitness: '💪', sleep: '😴', nutrition: '🥗', mindfulness: '🧘', reading: '📚', creativity: '🎨', other: '✨' } as any)[s.category] ?? '✨'}
+                    {({ fitness:'💪', sleep:'😴', nutrition:'🥗', mindfulness:'🧘', reading:'📚', creativity:'🎨', other:'✨' } as any)[s.category] ?? '✨'}
                   </span>
                   <div className="min-w-0">
                     <p className={`text-sm font-medium truncate ${text}`}>{s.title}</p>
@@ -366,15 +353,13 @@ export function ChallengesView() {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => addAiChallenge(s)}
+                <button onClick={() => addAiChallenge(s)}
                   disabled={challenges.length >= 5 && !isBonus}
                   className={`flex-shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                     challenges.length >= 5 && !isBonus
                       ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
                       : dark ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                  }`}
-                >
+                  }`}>
                   <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
@@ -384,7 +369,7 @@ export function ChallengesView() {
         )}
       </div>
 
-      {/* ── My Challenges ───────────────────────────────────────────────────── */}
+      {/* My Challenges */}
       <div className="space-y-2">
         <h3 className={`text-sm font-semibold px-1 ${subtext}`}>My Challenges</h3>
 
@@ -408,9 +393,7 @@ export function ChallengesView() {
                   ? dark ? 'border-amber-500/30 bg-amber-900/10' : 'border-amber-300/60 bg-amber-50'
                   : dark ? 'border-[#2a2a4a] bg-[#1a1a2e]' : 'border-slate-200 bg-white shadow-sm'
             }`}>
-              {isBonusChallenge && (
-                <div className="text-xs font-bold text-amber-500 mb-2">⭐ Bonus Challenge</div>
-              )}
+              {isBonusChallenge && <div className="text-xs font-bold text-amber-500 mb-2">⭐ Bonus Challenge</div>}
               {c.is_ai_generated && !isBonusChallenge && (
                 <div className={`text-[10px] font-medium mb-1.5 flex items-center gap-1 ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>
                   <Sparkles className="w-2.5 h-2.5" /> AI suggested
@@ -499,7 +482,7 @@ export function ChallengesView() {
         })}
       </div>
 
-      {/* Add challenge button/form */}
+      {/* Add challenge */}
       {canAdd && !showAdd && (
         <button onClick={() => setShowAdd(true)}
           className={`w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-medium transition-all ${
@@ -521,12 +504,10 @@ export function ChallengesView() {
       {showAdd && (
         <div className={`rounded-2xl border-2 p-5 space-y-3 ${dark ? 'bg-[#1a1a2e] border-[#2a2a4a]' : 'bg-white border-slate-200 shadow-sm'}`}>
           <h3 className={`font-semibold text-sm ${text}`}>{isBonus ? '⭐ Bonus Challenge' : 'New Challenge'}</h3>
-
           <input value={title} onChange={e => setTitle(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && goalType === 'simple' && addChallenge()}
             placeholder="e.g. Drink 8 cups of water" maxLength={100} autoFocus
             className={inputCls} />
-
           {title.trim() && (
             <p className={`text-xs ${subtext}`}>
               Category:{' '}
@@ -535,20 +516,16 @@ export function ChallengesView() {
               </span>
             </p>
           )}
-
           <div className="flex gap-2">
             {(['simple', 'progress'] as const).map(t => (
               <button key={t} onClick={() => setGoalType(t)}
                 className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  goalType === t
-                    ? 'bg-gradient-to-r from-indigo-500 to-violet-400 text-white'
-                    : dark ? 'bg-[#0d0d1a] text-slate-400' : 'bg-slate-100 text-slate-600'
+                  goalType === t ? 'bg-gradient-to-r from-indigo-500 to-violet-400 text-white' : dark ? 'bg-[#0d0d1a] text-slate-400' : 'bg-slate-100 text-slate-600'
                 }`}>
                 {t === 'simple' ? '✅ Simple' : '📊 Progress'}
               </button>
             ))}
           </div>
-
           {goalType === 'progress' && (
             <div className="flex gap-2">
               <input type="number" value={targetValue} onChange={e => setTargetValue(e.target.value)}
@@ -557,7 +534,6 @@ export function ChallengesView() {
                 placeholder="Unit (e.g. cups)" maxLength={10} className={inputCls} />
             </div>
           )}
-
           <div className="flex gap-2">
             <button onClick={addChallenge}
               disabled={!title.trim() || (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0))}
