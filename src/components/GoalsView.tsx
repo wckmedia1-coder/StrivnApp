@@ -398,4 +398,4 @@ export function GoalsView() {
 
             <div className="flex gap-2">
               <button onClick={() => setGoalType('simple')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-w
+  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
