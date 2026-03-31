@@ -34,8 +34,7 @@ export function GoalsView() {
   const [showIncrementFor, setShowIncrementFor] = useState<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
-  const totalGoalsToday = todayInstances.length;
-  const canAddMore = goals.filter(g => g.is_active).length < 5;
+  const canAddMore = todayInstances.length < 5;
 
   useEffect(() => {
     if (user) {
@@ -68,7 +67,6 @@ export function GoalsView() {
     if (!newGoalTitle.trim() || !canAddMore) return;
     if (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0)) return;
 
-    // Auto-detect category from title
     const category = detectCategory(newGoalTitle.trim());
 
     const { data, error } = await supabase
@@ -123,16 +121,12 @@ export function GoalsView() {
 
   const saveEdit = async (goalId: string) => {
     if (!editingTitle.trim()) return;
-    await supabase
-      .from('goals')
-      .update({ title: editingTitle.trim() })
-      .eq('id', goalId);
+    await supabase.from('goals').update({ title: editingTitle.trim() }).eq('id', goalId);
     setGoals(goals.map(g => g.id === goalId ? { ...g, title: editingTitle.trim() } : g));
     setEditingGoalId(null);
     setEditingTitle('');
   };
 
-  // Helper: fire trait increment after a goal completes
   const handleTraitIncrement = async (goalId: string) => {
     if (!user) return;
     const goal = goals.find(g => g.id === goalId);
@@ -140,7 +134,6 @@ export function GoalsView() {
     await incrementTrait(user.id, category as any);
   };
 
-  // Simple goal — just tick it
   const completeSimpleGoal = async (instance: InstanceWithProgress) => {
     if (!profile || instance.completed) return;
     const gemsPerGoal = profile.streak_count >= 5 ? 2 : 1;
@@ -158,9 +151,7 @@ export function GoalsView() {
       last_active_date: today,
     }).eq('id', user?.id);
 
-    // Increment character trait for this goal's category
     await handleTraitIncrement(instance.goal_id);
-
     await loadTodayInstances();
     await refreshProfile();
 
@@ -171,7 +162,6 @@ export function GoalsView() {
     }
   };
 
-  // Progress goal — add increment
   const addProgress = async (instance: InstanceWithProgress, goal: GoalWithProgress) => {
     if (!profile || instance.completed) return;
 
@@ -200,9 +190,7 @@ export function GoalsView() {
         last_active_date: today,
       }).eq('id', user?.id);
 
-      // Increment character trait for this goal's category
       await handleTraitIncrement(instance.goal_id);
-
       await refreshProfile();
 
       const earned = await checkAndAwardAchievements(user!.id);
@@ -266,7 +254,6 @@ export function GoalsView() {
                 isCompleted ? 'border-green-500 bg-green-50' : 'border-slate-200 bg-white hover:border-slate-300'
               }`}>
                 <div className="flex items-center gap-3">
-                  {/* Tick — only for simple goals */}
                   {!isProgress && (
                     <button onClick={() => completeSimpleGoal(instance)} disabled={isCompleted}
                       className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
@@ -276,7 +263,6 @@ export function GoalsView() {
                     </button>
                   )}
 
-                  {/* Progress check indicator */}
                   {isProgress && (
                     <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                       isCompleted ? 'bg-green-500 border-green-500' : 'border-slate-300'
@@ -285,7 +271,6 @@ export function GoalsView() {
                     </div>
                   )}
 
-                  {/* Title */}
                   <div className="flex-1">
                     {isEditing ? (
                       <input type="text" value={editingTitle} onChange={e => setEditingTitle(e.target.value)}
@@ -297,7 +282,6 @@ export function GoalsView() {
                         <p className={`font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
                           {goal.title}
                         </p>
-                        {/* Show detected category badge */}
                         {goal.category && goal.category !== 'general' && (
                           <span className="text-xs text-slate-400">
                             {['fitness','reading','mindfulness','creativity','sleep','nutrition'].includes(goal.category)
@@ -317,12 +301,10 @@ export function GoalsView() {
                     )}
                   </div>
 
-                  {/* Gems earned */}
                   {isCompleted && (
                     <div className="text-sm font-medium text-green-600">+{instance.gems_earned} gem{instance.gems_earned > 1 ? 's' : ''}</div>
                   )}
 
-                  {/* + button for progress goals */}
                   {isProgress && !isCompleted && (
                     <button onClick={() => setShowIncrementFor(isShowingIncrement ? null : instance.id)}
                       className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition-colors">
@@ -330,7 +312,6 @@ export function GoalsView() {
                     </button>
                   )}
 
-                  {/* Edit / Delete for non-completed goals */}
                   {!isCompleted && (
                     <div className="flex items-center gap-1">
                       {isEditing ? (
@@ -349,7 +330,6 @@ export function GoalsView() {
                   )}
                 </div>
 
-                {/* Progress bar */}
                 {isProgress && (
                   <div className="mt-3">
                     <div className="bg-slate-200 rounded-full h-2 overflow-hidden">
@@ -358,7 +338,6 @@ export function GoalsView() {
                   </div>
                 )}
 
-                {/* Increment input */}
                 {isShowingIncrement && !isCompleted && (
                   <div className="mt-3 flex gap-2 items-center">
                     <input
@@ -385,12 +364,11 @@ export function GoalsView() {
           })}
         </div>
 
-        {/* Add goal button */}
         {canAddMore && !showAddGoal && (
           <button onClick={() => setShowAddGoal(true)}
             className="w-full mt-4 py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-slate-400 hover:text-slate-900 transition-colors flex items-center justify-center gap-2">
             <Plus className="w-5 h-5" />
-            <span>Add Goal ({totalGoalsToday}/5)</span>
+            <span>Add Goal ({todayInstances.length}/5)</span>
           </button>
         )}
 
@@ -400,7 +378,6 @@ export function GoalsView() {
           </div>
         )}
 
-        {/* Add goal form */}
         {showAddGoal && (
           <div className="mt-4 p-4 bg-slate-50 rounded-lg space-y-3">
             <input type="text" value={newGoalTitle} onChange={e => setNewGoalTitle(e.target.value)}
@@ -408,7 +385,6 @@ export function GoalsView() {
               placeholder="Enter your goal..." maxLength={100} autoFocus
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900" />
 
-            {/* Live category preview */}
             {newGoalTitle.trim() && (
               <p className="text-xs text-slate-500">
                 Detected category:{' '}
@@ -420,62 +396,6 @@ export function GoalsView() {
               </p>
             )}
 
-            {/* Goal type toggle */}
             <div className="flex gap-2">
               <button onClick={() => setGoalType('simple')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
-                ✅ Simple
-              </button>
-              <button onClick={() => setGoalType('progress')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'progress' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
-                📊 Progress
-              </button>
-            </div>
-
-            {/* Progress fields */}
-            {goalType === 'progress' && (
-              <div className="flex gap-2">
-                <input type="number" value={targetValue} onChange={e => setTargetValue(e.target.value)}
-                  placeholder="Target (e.g. 4)" min="1" step="0.1"
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
-                  placeholder="Unit (e.g. L, km)" maxLength={10}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            )}
-
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="rounded" />
-              <span className="text-slate-700">Recurring daily</span>
-            </label>
-
-            <div className="flex gap-2">
-              <button onClick={createGoal}
-                disabled={!newGoalTitle.trim() || (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0))}
-                className="flex-1 bg-slate-900 text-white py-2 px-4 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                Add Goal
-              </button>
-              <button onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setTargetValue(''); setUnit(''); setGoalType('simple'); }}
-                className="px-4 py-2 text-slate-600 hover:text-slate-900">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-slate-100 rounded-xl p-6">
-        <h3 className="font-semibold text-slate-900 mb-2">How it works</h3>
-        <ul className="text-sm text-slate-600 space-y-1">
-          <li>• Add up to 5 goals per day</li>
-          <li>• <strong>Simple</strong> goals — just tick when done</li>
-          <li>• <strong>Progress</strong> goals — tap + to log your progress</li>
-          <li>• Each completed goal = {isHotStreak ? '2 gems (Hot Streak! 🔥)' : '1 gem'}</li>
-          <li>• Completing goals evolves your character 🧬</li>
-          <li>• Completed goals are locked — no cheating! 😄</li>
-          <li>• Maintain a 5-day streak for bonus rewards</li>
-        </ul>
-      </div>
-    </div>
-  );
-}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-w
