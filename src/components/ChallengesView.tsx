@@ -243,7 +243,6 @@ export function ChallengesView() {
     }
   };
 
-  const accent = '#6366f1';
   const accentSoft = dark ? 'bg-indigo-500/10' : 'bg-indigo-50';
   const card = `rounded-2xl border transition-all ${dark ? 'bg-[#1a1a2e] border-[#2a2a4a]' : 'bg-white border-slate-200/80 shadow-sm'}`;
   const text = dark ? 'text-white' : 'text-slate-800';
