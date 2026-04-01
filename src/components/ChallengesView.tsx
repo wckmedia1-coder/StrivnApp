@@ -102,7 +102,7 @@ export function ChallengesView() {
     const names = challenges.map(c => c.title).join(', ');
     const cats = [...new Set(challenges.map(c => c.category))].join(', ');
     if (!names) return 'This user is just getting started. Suggest beginner-friendly wellness challenges.';
-    return `The user's recent challenges include: ${names}. Categories they focus on: ${cats || 'general'}. Suggest 3 new complementary challenges they haven't tried yet today.`;
+    return `The user's recent challenges include: ${names}. Categories they focus on: ${cats || 'other'}. Suggest 3 new complementary challenges they haven't tried yet today.`;
   };
 
   const loadAiSuggestions = async () => {
@@ -422,9 +422,9 @@ export function ChallengesView() {
                     <p className={`font-medium text-sm truncate ${c.completed ? (dark ? 'text-slate-500 line-through' : 'text-slate-400 line-through') : text}`}>
                       {c.title}
                     </p>
-                    {c.category && c.category !== 'general' && (
+                    {c.category && c.category !== 'other' && (
                       <span className="text-sm flex-shrink-0">
-                        {({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗', other:'✨' } as any)[c.category]}
+                        {({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as any)[c.category]}
                       </span>
                     )}
                   </div>
@@ -511,7 +511,7 @@ export function ChallengesView() {
             <p className={`text-xs ${subtext}`}>
               Category:{' '}
               <span className={`font-medium ${dark ? 'text-white' : 'text-slate-700'}`}>
-                {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness', creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition', other:'✨ Other', general:'⚪ General' } as any)[detectCategory(title)] ?? '✨ Other'}
+                {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness', creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition', other:'✨ Other' } as any)[detectCategory(title)] ?? '✨ Other'}
               </span>
             </p>
           )}
