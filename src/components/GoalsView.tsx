@@ -108,6 +108,8 @@ export function GoalsView() {
     const instance = todayInstances.find(i => i.goal_id === goalId);
     if (instance?.completed) return;
     await supabase.from('goals').update({ is_active: false }).eq('id', goalId);
+    // Also delete the instance from the DB so the daily count is freed up
+    await supabase.from('daily_goal_instances').delete().eq('goal_id', goalId).eq('date', today);
     setGoals(goals.filter(g => g.id !== goalId));
     setTodayInstances(todayInstances.filter(i => i.goal_id !== goalId));
   };
@@ -282,11 +284,9 @@ export function GoalsView() {
                         <p className={`font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
                           {goal.title}
                         </p>
-                        {goal.category && goal.category !== 'general' && (
+                        {goal.category && goal.category !== 'other' && (
                           <span className="text-xs text-slate-400">
-                            {['fitness','reading','mindfulness','creativity','sleep','nutrition'].includes(goal.category)
-                              ? ({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as Record<string,string>)[goal.category]
-                              : null}
+                            {({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as Record<string,string>)[goal.category]}
                           </span>
                         )}
                       </div>
@@ -391,7 +391,7 @@ export function GoalsView() {
                 <span className="font-medium text-slate-700">
                   {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness',
                      creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition',
-                     general:'⚪ General' } as Record<string,string>)[detectCategory(newGoalTitle)] ?? 'General'}
+                     other:'✨ Other' } as Record<string,string>)[detectCategory(newGoalTitle)] ?? '✨ Other'}
                 </span>
               </p>
             )}
