@@ -7,7 +7,8 @@ import { CharacterView } from './CharacterView';
 import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
 import { AchievementsView } from './AchievementsView';
-import { ChallengesView, getLevelFromXp } from './ChallengesView';
+import { ChallengesView } from './ChallengesView';
+import { getLevelFromXp } from '../lib/gameLogic';
 
 type View = 'goals' | 'character' | 'social' | 'profile' | 'achievements' | 'challenges';
 
@@ -51,20 +52,17 @@ export function Dashboard() {
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
                   dark ? 'bg-[#1e1e3a] border-[#3a3a5c]' : 'bg-white/80 border-pink-200'
                 }`}>
-                  {/* Level badge */}
                   <span className={`text-xs font-bold ${dark ? 'text-indigo-300' : 'text-indigo-600'}`}>
                     Lv {level}
                   </span>
-                  {/* XP bar */}
                   <div className={`w-20 h-1.5 rounded-full overflow-hidden ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-200'}`}>
                     <div
                       className="h-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#ec4899] transition-all duration-500"
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
-                  {/* XP text */}
                   <span className={`text-xs ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {xpInLevel}/{xpNeeded}
+                    {xpInLevel}/{xpNeeded} XP
                   </span>
                 </div>
               )}
