@@ -34,14 +34,16 @@ export function GoalsView() {
   const [showIncrementFor, setShowIncrementFor] = useState<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
-  const canAddMore = todayInstances.length < 5;
 
   useEffect(() => {
     if (user) {
-      loadGoals();
-      loadTodayInstances();
+      loadAll();
     }
   }, [user]);
+
+  const loadAll = async () => {
+    await Promise.all([loadGoals(), loadTodayInstances()]);
+  };
 
   const loadGoals = async () => {
     const { data } = await supabase
@@ -62,6 +64,11 @@ export function GoalsView() {
       .eq('date', today);
     if (data) setTodayInstances(data);
   };
+
+  // Derive canAddMore from active goals that have an instance today
+  const activeGoalIds = goals.map(g => g.id);
+  const activeInstances = todayInstances.filter(i => activeGoalIds.includes(i.goal_id));
+  const canAddMore = activeInstances.length < 5;
 
   const createGoal = async () => {
     if (!newGoalTitle.trim() || !canAddMore) return;
@@ -84,13 +91,6 @@ export function GoalsView() {
       .single();
 
     if (data && !error) {
-      setGoals([...goals, data]);
-      setNewGoalTitle('');
-      setTargetValue('');
-      setUnit('');
-      setGoalType('simple');
-      setShowAddGoal(false);
-
       await supabase.from('daily_goal_instances').insert({
         goal_id: data.id,
         user_id: user?.id,
@@ -100,7 +100,12 @@ export function GoalsView() {
         progress_value: 0,
       });
 
-      await loadTodayInstances();
+      setNewGoalTitle('');
+      setTargetValue('');
+      setUnit('');
+      setGoalType('simple');
+      setShowAddGoal(false);
+      await loadAll();
     }
   };
 
@@ -108,7 +113,6 @@ export function GoalsView() {
     const instance = todayInstances.find(i => i.goal_id === goalId);
     if (instance?.completed) return;
     await supabase.from('goals').update({ is_active: false }).eq('id', goalId);
-    // Also delete the instance from the DB so the daily count is freed up
     await supabase.from('daily_goal_instances').delete().eq('goal_id', goalId).eq('date', today);
     setGoals(goals.filter(g => g.id !== goalId));
     setTodayInstances(todayInstances.filter(i => i.goal_id !== goalId));
@@ -154,7 +158,7 @@ export function GoalsView() {
     }).eq('id', user?.id);
 
     await handleTraitIncrement(instance.goal_id);
-    await loadTodayInstances();
+    await loadAll();
     await refreshProfile();
 
     const earned = await checkAndAwardAchievements(user!.id);
@@ -204,10 +208,10 @@ export function GoalsView() {
 
     setIncrementInputs(prev => ({ ...prev, [instance.id]: '' }));
     setShowIncrementFor(null);
-    await loadTodayInstances();
+    await loadAll();
   };
 
-  const completedCount = todayInstances.filter(i => i.completed).length;
+  const completedCount = activeInstances.filter(i => i.completed).length;
   const isHotStreak = profile && profile.streak_count >= 5;
 
   if (loading) return <div className="text-center py-8 text-slate-600">Loading...</div>;
@@ -224,7 +228,7 @@ export function GoalsView() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Today's Goals</h2>
-            <p className="text-slate-600 text-sm">{completedCount} of {todayInstances.length} completed</p>
+            <p className="text-slate-600 text-sm">{completedCount} of {activeInstances.length} completed</p>
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 justify-end mb-1">
@@ -236,7 +240,7 @@ export function GoalsView() {
         </div>
 
         <div className="space-y-3">
-          {todayInstances.length === 0 && goals.length === 0 && (
+          {activeInstances.length === 0 && goals.length === 0 && (
             <div className="text-center py-8 text-slate-500">No goals yet. Add your first goal to get started!</div>
           )}
 
@@ -284,9 +288,11 @@ export function GoalsView() {
                         <p className={`font-medium ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
                           {goal.title}
                         </p>
-                        {goal.category && goal.category !== 'other' && (
+                        {goal.category && goal.category !== 'general' && (
                           <span className="text-xs text-slate-400">
-                            {({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as Record<string,string>)[goal.category]}
+                            {(['fitness','reading','mindfulness','creativity','sleep','nutrition'].includes(goal.category))
+                              ? ({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as Record<string,string>)[goal.category]
+                              : null}
                           </span>
                         )}
                       </div>
@@ -368,7 +374,7 @@ export function GoalsView() {
           <button onClick={() => setShowAddGoal(true)}
             className="w-full mt-4 py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-slate-400 hover:text-slate-900 transition-colors flex items-center justify-center gap-2">
             <Plus className="w-5 h-5" />
-            <span>Add Goal ({todayInstances.length}/5)</span>
+            <span>Add Goal ({activeInstances.length}/5)</span>
           </button>
         )}
 
@@ -391,19 +397,17 @@ export function GoalsView() {
                 <span className="font-medium text-slate-700">
                   {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness',
                      creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition',
-                     other:'✨ Other' } as Record<string,string>)[detectCategory(newGoalTitle)] ?? '✨ Other'}
+                     general:'⚪ General' } as Record<string,string>)[detectCategory(newGoalTitle)] ?? 'General'}
                 </span>
               </p>
             )}
 
             <div className="flex gap-2">
-              <button
-                onClick={() => setGoalType('simple')}
+              <button onClick={() => setGoalType('simple')}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'simple' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
                 Simple
               </button>
-              <button
-                onClick={() => setGoalType('progress')}
+              <button onClick={() => setGoalType('progress')}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${goalType === 'progress' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
                 Progress
               </button>
