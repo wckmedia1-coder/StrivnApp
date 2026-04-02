@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Check, ChevronUp, X, Trophy, Flame, Trash2, Sparkles, RefreshCw, ChevronDown } from 'lucide-react';
+import { Plus, Check, ChevronUp, X, Trophy, Flame, Trash2, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -35,17 +35,123 @@ export function getLevelFromXp(totalXp: number): { level: number; xpInLevel: num
   }
 }
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama3-8b-8192';
+// ─── Motivational Quotes ─────────────────────────────────────────────────────
+const QUOTES = [
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
+  { text: "Don't watch the clock; do what it does. Keep going.", author: "Sam Levenson" },
+  { text: "Believe you can and you're halfway there.", author: "Theodore Roosevelt" },
+  { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
+  { text: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
+  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+  { text: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
+  { text: "It does not matter how slowly you go as long as you do not stop.", author: "Confucius" },
+  { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" },
+  { text: "Act as if what you do makes a difference. It does.", author: "William James" },
+  { text: "What you get by achieving your goals is not as important as what you become.", author: "Thoreau" },
+  { text: "The future depends on what you do today.", author: "Mahatma Gandhi" },
+  { text: "Small daily improvements over time lead to stunning results.", author: "Robin Sharma" },
+  { text: "You are never too old to set another goal or dream a new dream.", author: "C.S. Lewis" },
+  { text: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
+  { text: "Great things never come from comfort zones.", author: "Unknown" },
+  { text: "Dream it. Wish it. Do it.", author: "Unknown" },
+  { text: "Success doesn't just find you. You have to go out and get it.", author: "Unknown" },
+  { text: "The harder you work for something, the greater you'll feel when you achieve it.", author: "Unknown" },
+  { text: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" },
+  { text: "Little things make big days.", author: "Unknown" },
+  { text: "Your limitation — it's only your imagination.", author: "Unknown" },
+  { text: "Sometimes later becomes never. Do it now.", author: "Unknown" },
+  { text: "Don't stop when you're tired. Stop when you're done.", author: "Unknown" },
+  { text: "Do something today that your future self will thank you for.", author: "Sean Patrick Flanery" },
+  { text: "The body achieves what the mind believes.", author: "Unknown" },
+  { text: "Take care of your body. It's the only place you have to live.", author: "Jim Rohn" },
+  { text: "Strive for progress, not perfection.", author: "Unknown" },
+  { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
+  { text: "You don't find willpower, you create it.", author: "Unknown" },
+  { text: "One step at a time is all it takes to get you there.", author: "Emily Dickinson" },
+  { text: "The pain you feel today will be the strength you feel tomorrow.", author: "Unknown" },
+  { text: "Motivation is what gets you started. Habit is what keeps you going.", author: "Jim Ryun" },
+  { text: "Energy and persistence conquer all things.", author: "Benjamin Franklin" },
+  { text: "The secret is to work less as individuals and more as a team.", author: "Unknown" },
+  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { text: "You've got to get up every morning with determination if you're going to go to bed with satisfaction.", author: "George Lorimer" },
+  { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
+  { text: "Take care of your mind, your body will follow.", author: "Unknown" },
+];
 
-const CALM_SYSTEM_PROMPT = `You are a calm, supportive wellness coach for the app Strivn.
-Generate short, gentle daily challenge suggestions personalised to the user's recent activity.
-Each challenge should feel achievable, calming, and growth-oriented.
-Respond ONLY with a valid JSON array of 3 objects, no markdown, no extra text.
-Each object: { "title": string, "category": "fitness"|"sleep"|"nutrition"|"mindfulness"|"reading"|"creativity"|"other", "goal_type": "simple"|"progress", "target_value": number, "unit": string }
-For simple goals, target_value=1, unit="".
-Keep titles under 60 chars. Tone: warm, encouraging, calm.`;
+// ─── Daily Challenge Pool ────────────────────────────────────────────────────
+const CHALLENGE_POOL = [
+  { title: "Walk for 10 minutes outside", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Read 10 pages of a book", category: "reading", goal_type: "progress" as const, target_value: 10, unit: "pages" },
+  { title: "Drink 8 glasses of water", category: "nutrition", goal_type: "progress" as const, target_value: 8, unit: "glasses" },
+  { title: "Meditate for 5 minutes", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 20 push-ups", category: "fitness", goal_type: "progress" as const, target_value: 20, unit: "reps" },
+  { title: "Go to bed before 11pm", category: "sleep", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Eat a piece of fruit", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Stretch for 10 minutes", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Write 3 things you're grateful for", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Run or jog for 15 minutes", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Cook a healthy meal at home", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Draw or doodle for 10 minutes", category: "creativity", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Listen to a podcast episode", category: "reading", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 10 minutes of yoga", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Take a cold shower", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Walk 5,000 steps", category: "fitness", goal_type: "progress" as const, target_value: 5000, unit: "steps" },
+  { title: "Spend 30 minutes screen-free", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Learn one new word or fact", category: "reading", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Write in your journal for 5 minutes", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 30 squats", category: "fitness", goal_type: "progress" as const, target_value: 30, unit: "reps" },
+  { title: "Eat a vegetable with every meal", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Wake up without hitting snooze", category: "sleep", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Spend 15 minutes on a creative hobby", category: "creativity", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Take a 10-minute walk after dinner", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Read for 20 minutes before bed", category: "reading", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Drink a glass of water first thing in the morning", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 15 minutes of deep breathing", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Write down your top 3 goals for the day", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Cycle for 20 minutes", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Skip sugary drinks for the day", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do a 7-minute workout", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Tidy up one area of your home", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Send a kind message to someone", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Practice a musical instrument for 10 minutes", category: "creativity", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Sleep at least 7 hours tonight", category: "sleep", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 20 sit-ups", category: "fitness", goal_type: "progress" as const, target_value: 20, unit: "reps" },
+  { title: "Eat breakfast today", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Watch an educational video", category: "reading", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Take 5 deep breaths when you feel stressed", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Write a short poem or story", category: "creativity", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Avoid social media for 2 hours", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Swim for 20 minutes", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Prep a healthy lunch the night before", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Read one chapter of a book", category: "reading", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do a plank for 30 seconds", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Spend time in nature for 15 minutes", category: "mindfulness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Sketch or paint something", category: "creativity", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Go to bed 30 minutes earlier than usual", category: "sleep", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Do 10 minutes of foam rolling", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
+  { title: "Try a new healthy recipe", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
+];
+
+// Pick 3 challenges seeded by today's date so they're consistent all day
+function getDailyChallenges(dateStr: string) {
+  const seed = dateStr.split('-').join('');
+  const indices: number[] = [];
+  let n = parseInt(seed);
+  while (indices.length < 3) {
+    n = (n * 1664525 + 1013904223) & 0xffffffff;
+    const idx = Math.abs(n) % CHALLENGE_POOL.length;
+    if (!indices.includes(idx)) indices.push(idx);
+  }
+  return indices.map(i => CHALLENGE_POOL[i]);
+}
+
+function getDailyQuote(dateStr: string) {
+  const seed = dateStr.split('-').join('');
+  let n = parseInt(seed) * 31;
+  n = (n * 1664525 + 1013904223) & 0xffffffff;
+  return QUOTES[Math.abs(n) % QUOTES.length];
+}
 
 const todayStr = () => {
   const d = new Date();
@@ -68,12 +174,11 @@ export function ChallengesView() {
   const [showIncrementFor, setShowIncrementFor] = useState<string | null>(null);
   const [achievement, setAchievement] = useState<string | null>(null);
   const [levelUp, setLevelUp] = useState<number | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSuggestFull, setAiSuggestFull] = useState<any[]>([]);
-  const [showAiSection, setShowAiSection] = useState(true);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   const today = todayStr();
+  const dailyChallenges = getDailyChallenges(today);
+  const dailyQuote = getDailyQuote(today);
+
   const completedCount = challenges.filter(c => c.completed).length;
   const allComplete = challenges.length === 5 && completedCount === 5;
   const hasBonus = challenges.length === 6;
@@ -84,7 +189,7 @@ export function ChallengesView() {
   const { level, xpInLevel, xpNeeded } = getLevelFromXp(totalXp);
 
   useEffect(() => {
-    if (user) { load(); loadAiSuggestions(); }
+    if (user) load();
   }, [user]);
 
   const load = async () => {
@@ -98,64 +203,23 @@ export function ChallengesView() {
     setLoading(false);
   };
 
-  const buildUserContext = () => {
-    const names = challenges.map(c => c.title).join(', ');
-    const cats = [...new Set(challenges.map(c => c.category))].join(', ');
-    if (!names) return 'This user is just getting started. Suggest beginner-friendly wellness challenges.';
-    return `The user's recent challenges include: ${names}. Categories they focus on: ${cats || 'other'}. Suggest 3 new complementary challenges they haven't tried yet today.`;
-  };
-
-  const loadAiSuggestions = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      if (!GROQ_API_KEY) throw new Error('No API key configured');
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          max_tokens: 1000,
-          messages: [
-            { role: 'system', content: CALM_SYSTEM_PROMPT },
-            { role: 'user', content: buildUserContext() },
-          ],
-        }),
-      });
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content ?? '[]';
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-      setAiSuggestFull(parsed);
-    } catch {
-      setAiError("Couldn't load suggestions right now. Try refreshing.");
-      setAiSuggestFull([]);
-    }
-    setAiLoading(false);
-  };
-
-  const addAiChallenge = async (suggestion: any) => {
+  const addSuggestedChallenge = async (suggestion: typeof CHALLENGE_POOL[0]) => {
     if (challenges.length >= 5 && !isBonus) return;
-    const category = suggestion.category ?? detectCategory(suggestion.title);
     const { data, error } = await supabase.from('daily_challenges').insert({
       user_id: user!.id,
       title: suggestion.title,
-      goal_type: suggestion.goal_type ?? 'simple',
-      target_value: suggestion.target_value ?? 1,
-      unit: suggestion.unit ?? '',
-      category,
+      goal_type: suggestion.goal_type,
+      target_value: suggestion.target_value,
+      unit: suggestion.unit,
+      category: suggestion.category,
       date: today,
       completed: false,
       progress_value: 0,
       xp_earned: 0,
-      is_ai_generated: true,
+      is_ai_generated: false,
     }).select().single();
     if (data && !error) {
       setChallenges(prev => [...prev, data as DailyChallenge]);
-      setAiSuggestFull(prev => prev.filter(s => s.title !== suggestion.title));
     }
   };
 
@@ -243,6 +307,11 @@ export function ChallengesView() {
     }
   };
 
+  const categoryEmoji: Record<string, string> = {
+    fitness: '💪', reading: '📚', mindfulness: '🧘',
+    creativity: '🎨', sleep: '😴', nutrition: '🥗', other: '✨'
+  };
+
   const accentSoft = dark ? 'bg-indigo-500/10' : 'bg-indigo-50';
   const card = `rounded-2xl border transition-all ${dark ? 'bg-[#1a1a2e] border-[#2a2a4a]' : 'bg-white border-slate-200/80 shadow-sm'}`;
   const text = dark ? 'text-white' : 'text-slate-800';
@@ -266,7 +335,19 @@ export function ChallengesView() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Daily Quote */}
+      <div className={`${card} p-5 relative overflow-hidden`}>
+        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-2xl bg-gradient-to-b from-indigo-500 to-violet-400`} />
+        <p className={`text-xs font-semibold uppercase tracking-widest mb-3 ml-3 ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>
+          ✨ Quote of the Day
+        </p>
+        <p className={`text-base font-medium leading-relaxed ml-3 mb-2 ${text}`}>
+          "{dailyQuote.text}"
+        </p>
+        <p className={`text-sm ml-3 ${subtext}`}>— {dailyQuote.author}</p>
+      </div>
+
+      {/* Header: XP & Progress */}
       <div className={`${card} p-5`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -306,66 +387,53 @@ export function ChallengesView() {
         )}
       </div>
 
-      {/* AI Suggestions */}
+      {/* Daily Suggested Challenges */}
       <div className={`${card} overflow-hidden`}>
-        <button onClick={() => setShowAiSection(v => !v)}
-          className={`w-full flex items-center justify-between px-5 py-4 ${accentSoft} transition-colors`}>
+        <div className={`px-5 py-4 ${accentSoft}`}>
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span className={`font-semibold text-sm ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>AI Suggested for You</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>Personalised</span>
+            <span className={`font-semibold text-sm ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>
+              Today's Suggested Challenges
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>
+              Refreshes daily
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={e => { e.stopPropagation(); loadAiSuggestions(); }}
-              className={`p-1.5 rounded-lg transition-colors ${dark ? 'hover:bg-indigo-500/20 text-slate-400 hover:text-indigo-300' : 'hover:bg-indigo-100 text-slate-400 hover:text-indigo-600'}`}
-              title="Refresh suggestions">
-              <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
-            </button>
-            <ChevronDown className={`w-4 h-4 ${subtext} transition-transform ${showAiSection ? '' : '-rotate-90'}`} />
-          </div>
-        </button>
+          <p className={`text-xs mt-1 ${subtext}`}>3 new challenges every day — tap to add them</p>
+        </div>
 
-        {showAiSection && (
-          <div className="p-4 space-y-2">
-            {aiLoading && (
-              <div className={`text-center py-4 text-sm ${subtext}`}>
-                <div className="inline-block w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mr-2" />
-                Thinking of something just for you…
-              </div>
-            )}
-            {!aiLoading && aiError && (
-              <p className={`text-sm text-center py-3 text-red-400`}>{aiError}</p>
-            )}
-            {!aiLoading && !aiError && aiSuggestFull.length === 0 && (
-              <p className={`text-sm text-center py-3 ${subtext}`}>No suggestions right now — try refreshing.</p>
-            )}
-            {!aiLoading && aiSuggestFull.map((s, i) => (
+        <div className="p-4 space-y-2">
+          {dailyChallenges.map((s, i) => {
+            const alreadyAdded = challenges.some(c => c.title === s.title);
+            return (
               <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${dark ? 'bg-[#13132a] border-[#2a2a4a]' : 'bg-indigo-50/60 border-indigo-100'}`}>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-base flex-shrink-0">
-                    {({ fitness:'💪', sleep:'😴', nutrition:'🥗', mindfulness:'🧘', reading:'📚', creativity:'🎨', other:'✨' } as any)[s.category] ?? '✨'}
-                  </span>
+                  <span className="text-base flex-shrink-0">{categoryEmoji[s.category] ?? '✨'}</span>
                   <div className="min-w-0">
                     <p className={`text-sm font-medium truncate ${text}`}>{s.title}</p>
                     {s.goal_type === 'progress' && (
-                      <p className={`text-xs ${subtext}`}>{s.target_value} {s.unit}</p>
+                      <p className={`text-xs ${subtext}`}>Target: {s.target_value} {s.unit}</p>
                     )}
                   </div>
                 </div>
-                <button onClick={() => addAiChallenge(s)}
-                  disabled={challenges.length >= 5 && !isBonus}
-                  className={`flex-shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    challenges.length >= 5 && !isBonus
-                      ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
-                      : dark ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                  }`}>
-                  <Plus className="w-3 h-3" /> Add
-                </button>
+                {alreadyAdded ? (
+                  <span className={`flex-shrink-0 ml-3 text-xs font-semibold ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>✓ Added</span>
+                ) : (
+                  <button
+                    onClick={() => addSuggestedChallenge(s)}
+                    disabled={challenges.length >= 5 && !isBonus}
+                    className={`flex-shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      challenges.length >= 5 && !isBonus
+                        ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
+                        : dark ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                    }`}>
+                    <Plus className="w-3 h-3" /> Add
+                  </button>
+                )}
               </div>
-            ))}
-            <p className={`text-[10px] text-center pt-1 ${subtext}`}>Suggestions personalise based on your activity over time</p>
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
 
       {/* My Challenges */}
@@ -375,7 +443,7 @@ export function ChallengesView() {
         {challenges.length === 0 && (
           <div className={`text-center py-10 ${subtext}`}>
             <p className="text-3xl mb-2">🌱</p>
-            <p className="text-sm">Add a challenge or pick one from AI suggestions above</p>
+            <p className="text-sm">Add a challenge from the suggestions above or create your own</p>
           </div>
         )}
 
@@ -393,11 +461,6 @@ export function ChallengesView() {
                   : dark ? 'border-[#2a2a4a] bg-[#1a1a2e]' : 'border-slate-200 bg-white shadow-sm'
             }`}>
               {isBonusChallenge && <div className="text-xs font-bold text-amber-500 mb-2">⭐ Bonus Challenge</div>}
-              {c.is_ai_generated && !isBonusChallenge && (
-                <div className={`text-[10px] font-medium mb-1.5 flex items-center gap-1 ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>
-                  <Sparkles className="w-2.5 h-2.5" /> AI suggested
-                </div>
-              )}
 
               <div className="flex items-center gap-3">
                 {c.goal_type === 'simple' ? (
@@ -422,11 +485,7 @@ export function ChallengesView() {
                     <p className={`font-medium text-sm truncate ${c.completed ? (dark ? 'text-slate-500 line-through' : 'text-slate-400 line-through') : text}`}>
                       {c.title}
                     </p>
-                    {c.category && c.category !== 'other' && (
-                      <span className="text-sm flex-shrink-0">
-                        {({ fitness:'💪', reading:'📚', mindfulness:'🧘', creativity:'🎨', sleep:'😴', nutrition:'🥗' } as any)[c.category]}
-                      </span>
-                    )}
+                    {c.category && <span className="text-sm flex-shrink-0">{categoryEmoji[c.category] ?? '✨'}</span>}
                   </div>
                   {c.goal_type === 'progress' && (
                     <p className={`text-xs mt-0.5 ${subtext}`}>
@@ -481,7 +540,7 @@ export function ChallengesView() {
         })}
       </div>
 
-      {/* Add challenge */}
+      {/* Add your own */}
       {canAdd && !showAdd && (
         <button onClick={() => setShowAdd(true)}
           className={`w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-medium transition-all ${
@@ -507,21 +566,13 @@ export function ChallengesView() {
             onKeyDown={e => e.key === 'Enter' && goalType === 'simple' && addChallenge()}
             placeholder="e.g. Drink 8 cups of water" maxLength={100} autoFocus
             className={inputCls} />
-          {title.trim() && (
-            <p className={`text-xs ${subtext}`}>
-              Category:{' '}
-              <span className={`font-medium ${dark ? 'text-white' : 'text-slate-700'}`}>
-                {({ fitness:'💪 Fitness', reading:'📚 Reading', mindfulness:'🧘 Mindfulness', creativity:'🎨 Creativity', sleep:'😴 Sleep', nutrition:'🥗 Nutrition', other:'✨ Other' } as any)[detectCategory(title)] ?? '✨ Other'}
-              </span>
-            </p>
-          )}
           <div className="flex gap-2">
             {(['simple', 'progress'] as const).map(t => (
               <button key={t} onClick={() => setGoalType(t)}
                 className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
                   goalType === t ? 'bg-gradient-to-r from-indigo-500 to-violet-400 text-white' : dark ? 'bg-[#0d0d1a] text-slate-400' : 'bg-slate-100 text-slate-600'
                 }`}>
-                {t === 'simple' ? '✅ Simple' : '📊 Progress'}
+                {t === 'simple' ? 'Simple' : 'Progress'}
               </button>
             ))}
           </div>
@@ -550,11 +601,11 @@ export function ChallengesView() {
       {/* Info */}
       <div className={`rounded-2xl p-5 text-sm space-y-1 ${dark ? 'bg-[#1a1a2e] text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
         <p className={`font-semibold mb-2 ${text}`}>How it works</p>
-        <p>• Add up to 5 daily challenges — pick from AI suggestions or write your own</p>
-        <p>• Each completed challenge earns <strong>1 XP</strong> — levels get harder as you grow</p>
-        <p>• XP required per level increases: 3 → 5 → 8 → 11 → 17…</p>
+        <p>• 3 new suggested challenges appear every day</p>
+        <p>• Add up to 5 challenges total — mix suggestions with your own</p>
+        <p>• Each completed challenge earns <strong>1 XP</strong></p>
         <p>• Complete all 5 to unlock a bonus 6th challenge</p>
-        <p>• AI suggestions personalise over time as it learns your habits</p>
+        <p>• A new quote arrives every day to keep you motivated</p>
       </div>
     </div>
   );
