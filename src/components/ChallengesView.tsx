@@ -3,7 +3,7 @@ import { Plus, Check, ChevronUp, X, Trophy, Flame, Trash2, Sparkles } from 'luci
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { detectCategory, incrementTrait } from '../lib/gameLogic';
+import { detectCategory, incrementTrait, getLevelFromXp } from '../lib/gameLogic';
 
 type DailyChallenge = {
   id: string;
@@ -20,22 +20,6 @@ type DailyChallenge = {
   is_ai_generated?: boolean;
 };
 
-export function xpToNextLevel(level: number): number {
-  return Math.round(3 * Math.pow(1.5, level - 1));
-}
-
-export function getLevelFromXp(totalXp: number): { level: number; xpInLevel: number; xpNeeded: number } {
-  let level = 1;
-  let remaining = totalXp;
-  while (true) {
-    const needed = xpToNextLevel(level);
-    if (remaining < needed) return { level, xpInLevel: remaining, xpNeeded: needed };
-    remaining -= needed;
-    level++;
-  }
-}
-
-// ─── Motivational Quotes ─────────────────────────────────────────────────────
 const QUOTES = [
   { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
   { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
@@ -72,14 +56,13 @@ const QUOTES = [
   { text: "The pain you feel today will be the strength you feel tomorrow.", author: "Unknown" },
   { text: "Motivation is what gets you started. Habit is what keeps you going.", author: "Jim Ryun" },
   { text: "Energy and persistence conquer all things.", author: "Benjamin Franklin" },
-  { text: "The secret is to work less as individuals and more as a team.", author: "Unknown" },
   { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
-  { text: "You've got to get up every morning with determination if you're going to go to bed with satisfaction.", author: "George Lorimer" },
   { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
   { text: "Take care of your mind, your body will follow.", author: "Unknown" },
+  { text: "Strive not to be a success, but rather to be of value.", author: "Albert Einstein" },
+  { text: "The secret of your future is hidden in your daily routine.", author: "Mike Murdock" },
 ];
 
-// ─── Daily Challenge Pool ────────────────────────────────────────────────────
 const CHALLENGE_POOL = [
   { title: "Walk for 10 minutes outside", category: "fitness", goal_type: "simple" as const, target_value: 1, unit: "" },
   { title: "Read 10 pages of a book", category: "reading", goal_type: "progress" as const, target_value: 10, unit: "pages" },
@@ -133,7 +116,6 @@ const CHALLENGE_POOL = [
   { title: "Try a new healthy recipe", category: "nutrition", goal_type: "simple" as const, target_value: 1, unit: "" },
 ];
 
-// Pick 3 challenges seeded by today's date so they're consistent all day
 function getDailyChallenges(dateStr: string) {
   const seed = dateStr.split('-').join('');
   const indices: number[] = [];
@@ -218,9 +200,7 @@ export function ChallengesView() {
       xp_earned: 0,
       is_ai_generated: false,
     }).select().single();
-    if (data && !error) {
-      setChallenges(prev => [...prev, data as DailyChallenge]);
-    }
+    if (data && !error) setChallenges(prev => [...prev, data as DailyChallenge]);
   };
 
   const addChallenge = async () => {
@@ -337,7 +317,7 @@ export function ChallengesView() {
 
       {/* Daily Quote */}
       <div className={`${card} p-5 relative overflow-hidden`}>
-        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-2xl bg-gradient-to-b from-indigo-500 to-violet-400`} />
+        <div className="absolute top-0 left-0 w-1 h-full rounded-l-2xl bg-gradient-to-b from-indigo-500 to-violet-400" />
         <p className={`text-xs font-semibold uppercase tracking-widest mb-3 ml-3 ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>
           ✨ Quote of the Day
         </p>
