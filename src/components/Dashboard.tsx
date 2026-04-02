@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Home, User, Users, LogOut, Gem, Trophy, Calendar, Moon, Sun } from 'lucide-react';
+import { useState } from 'react';
+import { Home, User, Users, LogOut, Calendar, Moon, Sun, Trophy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { GoalsView } from './GoalsView';
@@ -7,7 +7,7 @@ import { CharacterView } from './CharacterView';
 import { SocialView } from './SocialView';
 import { ProfileView } from './ProfileView';
 import { AchievementsView } from './AchievementsView';
-import { ChallengesView } from './ChallengesView';
+import { ChallengesView, getLevelFromXp } from './ChallengesView';
 
 type View = 'goals' | 'character' | 'social' | 'profile' | 'achievements' | 'challenges';
 
@@ -16,6 +16,10 @@ export function Dashboard() {
   const { profile, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const dark = theme === 'dark';
+
+  const totalXp = (profile as any)?.total_xp ?? 0;
+  const { level, xpInLevel, xpNeeded } = getLevelFromXp(totalXp);
+  const progressPct = Math.round((xpInLevel / xpNeeded) * 100);
 
   const navItems: { id: View; icon: React.ElementType; label: string }[] = [
     { id: 'goals',        icon: Home,     label: 'Goals' },
@@ -37,20 +41,36 @@ export function Dashboard() {
       }`}>
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
+
+            {/* Left: logo + level bar */}
             <div className="flex items-center gap-3">
               <span className="text-2xl font-black tracking-tight bg-gradient-to-r from-[#a855f7] to-[#ec4899] bg-clip-text text-transparent">
                 Strivn
               </span>
               {profile && (
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border ${
-                  dark ? 'bg-[#1e1e3a] border-[#3a3a5c] text-white' : 'bg-white/80 border-pink-200 text-slate-800'
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+                  dark ? 'bg-[#1e1e3a] border-[#3a3a5c]' : 'bg-white/80 border-pink-200'
                 }`}>
-                  <Gem className="w-3.5 h-3.5 text-blue-500" />
-                  <span>{profile.gem_balance}</span>
+                  {/* Level badge */}
+                  <span className={`text-xs font-bold ${dark ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                    Lv {level}
+                  </span>
+                  {/* XP bar */}
+                  <div className={`w-20 h-1.5 rounded-full overflow-hidden ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-200'}`}>
+                    <div
+                      className="h-1.5 rounded-full bg-gradient-to-r from-[#a855f7] to-[#ec4899] transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  {/* XP text */}
+                  <span className={`text-xs ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {xpInLevel}/{xpNeeded}
+                  </span>
                 </div>
               )}
             </div>
 
+            {/* Right: username, theme toggle, sign out */}
             <div className="flex items-center gap-3">
               {profile && (
                 <div className="text-right hidden sm:block">
