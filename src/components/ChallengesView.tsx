@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Check, ChevronUp, X, Trophy, Flame, Trash2, Sparkles } from 'lucide-react';
+import { Check, ChevronUp, X, Trophy, Flame, Trash2, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { detectCategory, incrementTrait, getLevelFromXp } from '../lib/gameLogic';
+import { incrementTrait, getLevelFromXp } from '../lib/gameLogic';
 
 type DailyChallenge = {
   id: string;
@@ -147,27 +147,16 @@ export function ChallengesView() {
 
   const [challenges, setChallenges] = useState<DailyChallenge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [title, setTitle] = useState('');
-  const [goalType, setGoalType] = useState<'simple' | 'progress'>('simple');
-  const [targetValue, setTargetValue] = useState('');
-  const [unit, setUnit] = useState('');
   const [incrementInputs, setIncrementInputs] = useState<Record<string, string>>({});
   const [showIncrementFor, setShowIncrementFor] = useState<string | null>(null);
   const [achievement, setAchievement] = useState<string | null>(null);
   const [levelUp, setLevelUp] = useState<number | null>(null);
-  const [addingId, setAddingId] = useState<string | null>(null);
 
   const today = todayStr();
   const dailyChallenges = getDailyChallenges(today);
   const dailyQuote = getDailyQuote(today);
 
   const completedCount = challenges.filter(c => c.completed).length;
-  const allComplete = challenges.length === 5 && completedCount === 5;
-  const hasBonus = challenges.length === 6;
-  const canAdd = challenges.length < 5 || (allComplete && !hasBonus);
-  const isBonus = challenges.length === 5 && allComplete;
-
   const totalXp = (profile as any)?.total_xp ?? 0;
   const { level, xpInLevel, xpNeeded } = getLevelFromXp(totalXp);
 
@@ -184,63 +173,6 @@ export function ChallengesView() {
       .order('created_at', { ascending: true });
     setChallenges((data ?? []) as DailyChallenge[]);
     setLoading(false);
-  };
-
-  const addSuggestedChallenge = async (suggestion: typeof CHALLENGE_POOL[0]) => {
-    if (!user) return;
-    if (challenges.length >= 5 && !isBonus) return;
-    if (challenges.some(c => c.title === suggestion.title)) return;
-
-    setAddingId(suggestion.title);
-    try {
-      const { data, error } = await supabase.from('daily_challenges').insert({
-        user_id: user.id,
-        title: suggestion.title,
-        goal_type: suggestion.goal_type,
-        target_value: suggestion.target_value,
-        unit: suggestion.unit,
-        category: suggestion.category,
-        date: today,
-        completed: false,
-        progress_value: 0,
-        xp_earned: 0,
-        is_ai_generated: false,
-      }).select().single();
-
-      if (error) {
-        console.error('Error adding challenge:', error);
-      } else if (data) {
-        setChallenges(prev => [...prev, data as DailyChallenge]);
-      }
-    } finally {
-      setAddingId(null);
-    }
-  };
-
-  const addChallenge = async () => {
-    if (!title.trim() || !user) return;
-    if (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0)) return;
-    const category = detectCategory(title.trim());
-    const { data, error } = await supabase.from('daily_challenges').insert({
-      user_id: user.id,
-      title: title.trim(),
-      goal_type: goalType,
-      target_value: goalType === 'progress' ? parseFloat(targetValue) : 1,
-      unit: goalType === 'progress' ? unit.trim() : '',
-      category,
-      date: today,
-      completed: false,
-      progress_value: 0,
-      xp_earned: 0,
-      is_ai_generated: false,
-    }).select().single();
-    if (error) {
-      console.error('Error adding challenge:', error);
-    } else if (data) {
-      setChallenges(prev => [...prev, data as DailyChallenge]);
-      setTitle(''); setTargetValue(''); setUnit('');
-      setGoalType('simple'); setShowAdd(false);
-    }
   };
 
   const awardXp = async () => {
@@ -298,7 +230,7 @@ export function ChallengesView() {
   const showAchievementIfAllDone = () => {
     const updated = challenges.filter(c => c.completed).length + 1;
     if (updated === 5) {
-      setAchievement('🌿 All 5 done! Bonus challenge unlocked!');
+      setAchievement('🌿 All 5 done!');
       setTimeout(() => setAchievement(null), 4000);
     }
   };
@@ -365,7 +297,6 @@ export function ChallengesView() {
             </div>
           </div>
         </div>
-
         <div className={`rounded-full h-2 overflow-hidden mb-1 ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-100'}`}>
           <div className="h-2 rounded-full transition-all duration-700 bg-gradient-to-r from-indigo-500 to-violet-400"
             style={{ width: `${challenges.length > 0 ? (completedCount / challenges.length) * 100 : 0}%` }} />
@@ -375,62 +306,34 @@ export function ChallengesView() {
             style={{ width: `${(xpInLevel / xpNeeded) * 100}%` }} />
         </div>
         <p className={`text-[10px] mt-1 ${subtext}`}>{xpInLevel}/{xpNeeded} XP to Level {level + 1} · Each challenge earns 1 XP</p>
-
-        {allComplete && (
-          <p className="text-sm text-indigo-400 font-semibold mt-3 text-center">
-            🌿 All done! {hasBonus ? 'Bonus challenge added.' : 'Bonus challenge unlocked!'}
-          </p>
-        )}
       </div>
 
-      {/* Daily Suggested Challenges */}
+      {/* Daily Suggested Challenges — ideas only, no add button */}
       <div className={`${card} overflow-hidden`}>
         <div className={`px-5 py-4 ${accentSoft}`}>
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-indigo-400" />
             <span className={`font-semibold text-sm ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>
-              Today's Suggested Challenges
+              Today's Challenge Ideas
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full ${dark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`}>
               Refreshes daily
             </span>
           </div>
-          <p className={`text-xs mt-1 ${subtext}`}>3 new challenges every day — tap to add them</p>
+          <p className={`text-xs mt-1 ${subtext}`}>3 fresh ideas every day to inspire your goals</p>
         </div>
-
         <div className="p-4 space-y-2">
-          {dailyChallenges.map((s, i) => {
-            const alreadyAdded = challenges.some(c => c.title === s.title);
-            const isAdding = addingId === s.title;
-            const isDisabled = (challenges.length >= 5 && !isBonus) || alreadyAdded || isAdding;
-            return (
-              <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${dark ? 'bg-[#13132a] border-[#2a2a4a]' : 'bg-indigo-50/60 border-indigo-100'}`}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-base flex-shrink-0">{categoryEmoji[s.category] ?? '✨'}</span>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium truncate ${text}`}>{s.title}</p>
-                    {s.goal_type === 'progress' && (
-                      <p className={`text-xs ${subtext}`}>Target: {s.target_value} {s.unit}</p>
-                    )}
-                  </div>
-                </div>
-                {alreadyAdded ? (
-                  <span className={`flex-shrink-0 ml-3 text-xs font-semibold ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>✓ Added</span>
-                ) : (
-                  <button
-                    onClick={() => addSuggestedChallenge(s)}
-                    disabled={isDisabled}
-                    className={`flex-shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      isDisabled
-                        ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
-                        : dark ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                    }`}>
-                    <Plus className="w-3 h-3" /> {isAdding ? '...' : 'Add'}
-                  </button>
+          {dailyChallenges.map((s, i) => (
+            <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${dark ? 'bg-[#13132a] border-[#2a2a4a]' : 'bg-indigo-50/60 border-indigo-100'}`}>
+              <span className="text-base flex-shrink-0">{categoryEmoji[s.category] ?? '✨'}</span>
+              <div className="min-w-0">
+                <p className={`text-sm font-medium truncate ${text}`}>{s.title}</p>
+                {s.goal_type === 'progress' && (
+                  <p className={`text-xs ${subtext}`}>Target: {s.target_value} {s.unit}</p>
                 )}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -452,7 +355,6 @@ export function ChallengesView() {
                     : dark ? 'border-[#2a2a4a] bg-[#1a1a2e]' : 'border-slate-200 bg-white shadow-sm'
               }`}>
                 {isBonusChallenge && <div className="text-xs font-bold text-amber-500 mb-2">⭐ Bonus Challenge</div>}
-
                 <div className="flex items-center gap-3">
                   {c.goal_type === 'simple' ? (
                     <button onClick={() => completeSimple(c)} disabled={c.completed}
@@ -470,7 +372,6 @@ export function ChallengesView() {
                       {c.completed && <Check className="w-3.5 h-3.5 text-white" />}
                     </div>
                   )}
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className={`font-medium text-sm truncate ${c.completed ? (dark ? 'text-slate-500 line-through' : 'text-slate-400 line-through') : text}`}>
@@ -484,18 +385,15 @@ export function ChallengesView() {
                       </p>
                     )}
                   </div>
-
                   {c.completed && (
                     <span className={`text-xs font-bold flex-shrink-0 ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>+1 XP</span>
                   )}
-
                   {c.goal_type === 'progress' && !c.completed && (
                     <button onClick={() => setShowIncrementFor(showingInc ? null : c.id)}
                       className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-400 text-white flex items-center justify-center">
                       <ChevronUp className="w-3.5 h-3.5" />
                     </button>
                   )}
-
                   {!c.completed && (
                     <button onClick={() => deleteChallenge(c.id)}
                       className={`flex-shrink-0 transition-colors ${dark ? 'text-slate-600 hover:text-red-400' : 'text-slate-300 hover:text-red-400'}`}>
@@ -503,13 +401,11 @@ export function ChallengesView() {
                     </button>
                   )}
                 </div>
-
                 {c.goal_type === 'progress' && (
                   <div className={`mt-3 rounded-full h-1.5 overflow-hidden ${dark ? 'bg-[#0d0d1a]' : 'bg-slate-100'}`}>
                     <div className="h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-400 transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 )}
-
                 {showingInc && !c.completed && (
                   <div className="mt-3 flex gap-2 items-center">
                     <input type="number" value={incrementInputs[c.id] || ''} min="0.01" step="0.01"
@@ -532,71 +428,12 @@ export function ChallengesView() {
         </div>
       )}
 
-      {/* Add your own */}
-      {canAdd && !showAdd && (
-        <button onClick={() => setShowAdd(true)}
-          className={`w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-medium transition-all ${
-            isBonus
-              ? 'border-amber-400 text-amber-500 hover:bg-amber-50'
-              : dark ? 'border-[#2a2a4a] text-slate-400 hover:border-indigo-400 hover:text-indigo-400' : 'border-slate-200 text-slate-400 hover:border-indigo-400 hover:text-indigo-500'
-          }`}>
-          <Plus className="w-4 h-4" />
-          {isBonus ? '⭐ Add Bonus Challenge' : `Add Your Own (${challenges.length}/5)`}
-        </button>
-      )}
-
-      {!canAdd && challenges.length >= 5 && !allComplete && (
-        <div className={`text-center text-sm py-3 rounded-2xl ${dark ? 'bg-[#1a1a2e] text-slate-400' : 'bg-slate-50 text-slate-400'}`}>
-          🔒 Complete all 5 to unlock a bonus challenge
-        </div>
-      )}
-
-      {showAdd && (
-        <div className={`rounded-2xl border-2 p-5 space-y-3 ${dark ? 'bg-[#1a1a2e] border-[#2a2a4a]' : 'bg-white border-slate-200 shadow-sm'}`}>
-          <h3 className={`font-semibold text-sm ${text}`}>{isBonus ? '⭐ Bonus Challenge' : 'New Challenge'}</h3>
-          <input value={title} onChange={e => setTitle(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && goalType === 'simple' && addChallenge()}
-            placeholder="e.g. Drink 8 cups of water" maxLength={100} autoFocus
-            className={inputCls} />
-          <div className="flex gap-2">
-            {(['simple', 'progress'] as const).map(t => (
-              <button key={t} onClick={() => setGoalType(t)}
-                className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  goalType === t ? 'bg-gradient-to-r from-indigo-500 to-violet-400 text-white' : dark ? 'bg-[#0d0d1a] text-slate-400' : 'bg-slate-100 text-slate-600'
-                }`}>
-                {t === 'simple' ? 'Simple' : 'Progress'}
-              </button>
-            ))}
-          </div>
-          {goalType === 'progress' && (
-            <div className="flex gap-2">
-              <input type="number" value={targetValue} onChange={e => setTargetValue(e.target.value)}
-                placeholder="Target (e.g. 8)" min="0.01" step="0.01" className={inputCls} />
-              <input type="text" value={unit} onChange={e => setUnit(e.target.value)}
-                placeholder="Unit (e.g. cups)" maxLength={10} className={inputCls} />
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button onClick={addChallenge}
-              disabled={!title.trim() || (goalType === 'progress' && (!targetValue || parseFloat(targetValue) <= 0))}
-              className="flex-1 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-400 text-white font-semibold text-sm disabled:opacity-50">
-              Add
-            </button>
-            <button onClick={() => { setShowAdd(false); setTitle(''); setTargetValue(''); setUnit(''); setGoalType('simple'); }}
-              className={`px-4 py-2 text-sm ${subtext}`}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Info */}
       <div className={`rounded-2xl p-5 text-sm space-y-1 ${dark ? 'bg-[#1a1a2e] text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
         <p className={`font-semibold mb-2 ${text}`}>How it works</p>
-        <p>• 3 new suggested challenges appear every day</p>
-        <p>• Add up to 5 challenges total — mix suggestions with your own</p>
+        <p>• 3 fresh challenge ideas appear every day for inspiration</p>
+        <p>• Add your own challenges via the Goals page</p>
         <p>• Each completed challenge earns <strong>1 XP</strong></p>
-        <p>• Complete all 5 to unlock a bonus 6th challenge</p>
         <p>• A new quote arrives every day to keep you motivated</p>
       </div>
     </div>
