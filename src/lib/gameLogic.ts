@@ -292,4 +292,17 @@ export async function checkAndApplyDecay(userId: string, currentDate: string) {
         .eq('id', trait.id);
     }
   }
+export function xpToNextLevel(level: number): number {
+  return Math.round(3 * Math.pow(1.5, level - 1));
+}
+
+export function getLevelFromXp(totalXp: number): { level: number; xpInLevel: number; xpNeeded: number } {
+  let level = 1;
+  let remaining = totalXp;
+  while (true) {
+    const needed = xpToNextLevel(level);
+    if (remaining < needed) return { level, xpInLevel: remaining, xpNeeded: needed };
+    remaining -= needed;
+    level++;
+  }
 }
